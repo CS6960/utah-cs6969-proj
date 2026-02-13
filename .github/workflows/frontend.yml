@@ -1,10 +1,15 @@
-name: Build and Deploy to GitHub Pages
+name: Frontend - Build and Deploy to GitHub Pages
 
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'frontend/**'
 
 permissions:
   contents: read
@@ -26,15 +31,18 @@ jobs:
       with:
         node-version: 20.x
         cache: 'npm'
+        cache-dependency-path: 'frontend/package-lock.json'
     - run: npm ci
+      working-directory: frontend
     - run: npm run build
+      working-directory: frontend
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: 'dist'
+        path: 'frontend/dist'
 
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     environment:
