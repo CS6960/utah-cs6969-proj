@@ -4,4 +4,6 @@ dist
 
 node_modules
 
-*.iml.claude/worktrees/
+*.iml
+
+.claude/
