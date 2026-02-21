@@ -35,8 +35,8 @@ All computations are derived from the `closed_positions` table:
 | `hold_days` | `exit_date - entry_date` | Computed |
 | `exit_reason` | Why the position was closed | `closed_positions.exit_reason` |
 | `sector` | GICS sector of the security | `securities.sector` via join |
-| `dividends_received` | Total dividend income while position was open | `SUM(transactions.amount) WHERE ticker = X AND category = 'income' AND date BETWEEN entry_date AND exit_date` |
-| `fees_paid` | ADR fees + foreign tax while position was open | `SUM(transactions.amount) WHERE ticker = X AND category = 'fee' AND date BETWEEN entry_date AND exit_date` |
+| `dividends_received` | Total dividend income while position was open | `SUM(transactions.amount) WHERE symbol = X AND category = 'income' AND date BETWEEN entry_date AND exit_date` |
+| `fees_paid` | ADR fees + foreign tax while position was open | `SUM(transactions.amount) WHERE symbol = X AND category = 'fee' AND date BETWEEN entry_date AND exit_date` |
 | `total_return_dollar` | Price P&L + dividends − fees | `realized_pnl_dollar + dividends_received + fees_paid` |
 
 **Note on cost basis**: The `entry_price` may be adjusted by `corporate_action` transactions (Return Of Capital, Return Of Cap Adj) that reduce cost basis on the referenced security. The import pipeline should apply these adjustments to `positions.cost_basis` when they occur.
@@ -223,7 +223,7 @@ Response:
 - `closed_positions` (symbol, entry_date, exit_date, entry_price, exit_price, shares, exit_reason, strategy_id, reconstruction_period)
 - `securities` (sector, industry) — for sector attribution
 - `strategies` (strategy_id, name) — for strategy name display
-- `transactions` (ticker, category, amount, date) — for per-position dividend income (`category = 'income'`), fee attribution (`category = 'fee'`), and cost basis adjustments (`category = 'corporate_action'`)
+- `transactions` (symbol, category, amount, date) — for per-position dividend income (`category = 'income'`), fee attribution (`category = 'fee'`), and cost basis adjustments (`category = 'corporate_action'`)
 
 ---
 
