@@ -1,2 +1,9 @@
 fastapi==0.104.1
 uvicorn==0.24.0
+
+python-dotenv==1.2.1
+langchain==1.2.10
+langchain-core==1.2.15
+langchain-openai==1.1.10
+langchain-community==0.4.1
+duckduckgo_search==8.1.1
