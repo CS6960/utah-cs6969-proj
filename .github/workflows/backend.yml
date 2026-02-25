@@ -32,6 +32,6 @@ jobs:
       working-directory: backend
       if: hashFiles('backend/requirements.txt') != ''
     - name: Run tests
-      run: python -m pytest --if-present
+      run: python -m pytest
       working-directory: backend
-      if: hashFiles('backend/requirements.txt') != ''
+      if: hashFiles('backend/**/*_test.py') != ''
