@@ -7,3 +7,4 @@ langchain-openai==1.1.10
 langchain-community==0.4.1
 duckduckgo_search==8.1.1
 ddgs==9.10.0
+pytest==9.0.2
