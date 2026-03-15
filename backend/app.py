@@ -1,13 +1,14 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from agent import run_agent
 
 app = FastAPI()
 
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://cs6960.github.io/utah-cs6969-proj/", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -19,9 +20,17 @@ def hello():
     return {'message': 'Hello, World!'}
 
 
+
 @app.get('/api/health')
 def health():
     return {'status': 'ok'}
+
+@app.post('/api/agent')
+async def agent_endpoint(request: Request):
+    data = await request.json()
+    query = data.get('query', '')
+    result = run_agent(query)
+    return {'result': result}
 
 
 if __name__ == '__main__':

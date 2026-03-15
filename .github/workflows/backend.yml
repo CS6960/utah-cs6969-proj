@@ -17,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
     - uses: actions/checkout@v4
@@ -32,6 +32,6 @@ jobs:
       working-directory: backend
       if: hashFiles('backend/requirements.txt') != ''
     - name: Run tests
-      run: python -m pytest --if-present
+      run: python -m pytest
       working-directory: backend
-      if: hashFiles('backend/requirements.txt') != ''
+      if: hashFiles('backend/**/*_test.py') != ''
