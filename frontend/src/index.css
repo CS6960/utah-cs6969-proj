@@ -3,3 +3,60 @@
   padding: 0;
   box-sizing: border-box;
 }
+
+html {
+  font-size: 16px;
+}
+
+body {
+  min-width: 320px;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes portfolioChatElasticOpen {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.88);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translateY(-6px) scale(1.03);
+  }
+
+  78% {
+    transform: translateY(2px) scale(0.985);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes portfolioChatElasticClose {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 900px) {
+  section[style] {
+    grid-template-columns: 1fr !important;
+  }
+}
