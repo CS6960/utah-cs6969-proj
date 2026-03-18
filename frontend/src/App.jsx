@@ -320,11 +320,16 @@ function App() {
   const [selectedSymbol, setSelectedSymbol] = useState(initialHoldings[0].symbol);
   const [draft, setDraft] = useState("");
   const [portfolioDraft, setPortfolioDraft] = useState("");
+  const [isHoldingChatLoading, setIsHoldingChatLoading] = useState(false);
+  const [isPortfolioChatLoading, setIsPortfolioChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
   const [isPortfolioChatExpanded, setIsPortfolioChatExpanded] = useState(false);
   const [isHoldingChatExpanded, setIsHoldingChatExpanded] = useState(false);
   const [messagesBySymbol, setMessagesBySymbol] = useState(seedMessages);
   const [portfolioMessages, setPortfolioMessages] = useState(portfolioSeedMessages);
   const [uploadMessage, setUploadMessage] = useState("");
+
+  const chatApiBase = useMemo(() => import.meta.env.VITE_API_BASE || "http://localhost:8000", []);
 
   const selectedHolding = useMemo(
     () => holdings.find((holding) => holding.symbol === selectedSymbol) ?? holdings[0],
@@ -368,41 +373,96 @@ function App() {
     setView("holding");
   }
 
-  function submitMessage() {
+  async function submitMessage() {
     const prompt = draft.trim();
 
-    if (!prompt) {
+    if (!prompt || isHoldingChatLoading || !selectedHolding) {
       return;
     }
 
-    const reply = buildReply(selectedHolding, prompt);
+    setChatError("");
+    setIsHoldingChatLoading(true);
+    setDraft("");
 
     setMessagesBySymbol((current) => ({
       ...current,
       [selectedHolding.symbol]: [
         ...(current[selectedHolding.symbol] ?? []),
         { role: "user", text: prompt },
-        { role: "advisor", text: reply },
       ],
     }));
-    setDraft("");
+
+    try {
+      const response = await fetch(`${chatApiBase}/api/agent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: prompt }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with ${response.status}`);
+      }
+
+      const data = await response.json();
+      const reply =
+        typeof data?.result === "string"
+          ? data.result
+          : typeof data?.reply === "string"
+            ? data.reply
+            : "No reply";
+
+      setMessagesBySymbol((current) => ({
+        ...current,
+        [selectedHolding.symbol]: [
+          ...(current[selectedHolding.symbol] ?? []),
+          { role: "advisor", text: reply },
+        ],
+      }));
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Unable to reach the chat service.");
+    } finally {
+      setIsHoldingChatLoading(false);
+    }
   }
 
-  function submitPortfolioMessage() {
+  async function submitPortfolioMessage() {
     const prompt = portfolioDraft.trim();
 
-    if (!prompt) {
+    if (!prompt || isPortfolioChatLoading) {
       return;
     }
 
-    const reply = buildPortfolioReply(prompt, portfolioStats);
-
-    setPortfolioMessages((current) => [
-      ...current,
-      { role: "user", text: prompt },
-      { role: "advisor", text: reply },
-    ]);
+    setChatError("");
+    setIsPortfolioChatLoading(true);
     setPortfolioDraft("");
+
+    setPortfolioMessages((current) => [...current, { role: "user", text: prompt }]);
+
+    try {
+      const response = await fetch(`${chatApiBase}/api/agent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: prompt }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with ${response.status}`);
+      }
+
+      const data = await response.json();
+      const reply =
+        typeof data?.result === "string"
+          ? data.result
+          : typeof data?.reply === "string"
+            ? data.reply
+            : "No reply";
+
+      setPortfolioMessages((current) => [...current, { role: "advisor", text: reply }]);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Unable to reach the chat service.");
+    } finally {
+      setIsPortfolioChatLoading(false);
+    }
   }
 
   function handlePortfolioUpload(event) {
@@ -925,19 +985,26 @@ function App() {
                 />
                 <button
                   onClick={submitPortfolioMessage}
+                  disabled={isPortfolioChatLoading}
                   style={{
                     border: "none",
-                    background: "#f1b04b",
+                    background: isPortfolioChatLoading ? "#e6d2b2" : "#f1b04b",
                     color: "#1f2937",
                     borderRadius: 18,
                     padding: "0 18px",
-                    cursor: "pointer",
+                    cursor: isPortfolioChatLoading ? "not-allowed" : "pointer",
                     fontWeight: 700,
+                    opacity: isPortfolioChatLoading ? 0.8 : 1,
                   }}
                 >
-                  Send
+                  {isPortfolioChatLoading ? "Sending" : "Send"}
                 </button>
               </div>
+              {(isPortfolioChatLoading || chatError) && (
+                <div style={{ marginTop: 8, fontSize: 12, color: chatError ? "#b94b5e" : theme.muted }}>
+                  {chatError ? chatError : "Thinking..."}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1096,19 +1163,26 @@ function App() {
                 />
                 <button
                   onClick={submitMessage}
+                  disabled={isHoldingChatLoading}
                   style={{
                     border: "none",
-                    background: "#f1b04b",
+                    background: isHoldingChatLoading ? "#e6d2b2" : "#f1b04b",
                     color: "#1f2937",
                     borderRadius: 18,
                     padding: "0 18px",
-                    cursor: "pointer",
+                    cursor: isHoldingChatLoading ? "not-allowed" : "pointer",
                     fontWeight: 700,
+                    opacity: isHoldingChatLoading ? 0.8 : 1,
                   }}
                 >
-                  Send
+                  {isHoldingChatLoading ? "Sending" : "Send"}
                 </button>
               </div>
+              {(isHoldingChatLoading || chatError) && (
+                <div style={{ marginTop: 8, fontSize: 12, color: chatError ? "#b94b5e" : theme.muted }}>
+                  {chatError ? chatError : "Thinking..."}
+                </div>
+              )}
             </div>
           )}
         </div>
