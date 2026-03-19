@@ -18,97 +18,6 @@ const fonts = {
   display: "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif",
 };
 
-const initialHoldings = [
-  {
-    symbol: "AAPL",
-    name: "Apple",
-    shares: 42,
-    price: 212.34,
-    avgCost: 184.1,
-    thesis: "Consumer ecosystem moat plus services margin expansion.",
-    catalyst: "WWDC AI rollout and buyback support.",
-    risk: "iPhone replacement cycle slows if consumer demand softens.",
-    notes: ["Large-cap core", "Low turnover", "Good tax lot cushion"],
-  },
-  {
-    symbol: "MSFT",
-    name: "Microsoft",
-    shares: 18,
-    price: 438.52,
-    avgCost: 376.84,
-    thesis: "Cloud cash flow funds AI capex without stressing quality.",
-    catalyst: "Azure AI monetization and Copilot attach rate.",
-    risk: "Valuation is rich if enterprise AI spend pauses.",
-    notes: ["AI platform exposure", "Core compounder", "High quality"],
-  },
-  {
-    symbol: "JPM",
-    name: "JPMorgan",
-    shares: 35,
-    price: 198.27,
-    avgCost: 171.42,
-    thesis: "Best-in-class bank franchise with diversified earnings.",
-    catalyst: "NII resilience and capital return.",
-    risk: "Credit costs rise if macro deteriorates.",
-    notes: ["Financial ballast", "Dividend support", "Lower beta"],
-  },
-  {
-    symbol: "NVDA",
-    name: "NVIDIA",
-    shares: 16,
-    price: 118.91,
-    avgCost: 92.33,
-    thesis: "AI compute demand remains supply constrained.",
-    catalyst: "Blackwell ramp and inference demand.",
-    risk: "Position can become oversized after sharp rallies.",
-    notes: ["Higher volatility", "Strong momentum", "Trim candidate"],
-  },
-  {
-    symbol: "AMZN",
-    name: "Amazon",
-    shares: 14,
-    price: 187.62,
-    avgCost: 163.25,
-    thesis: "Retail margins and AWS cash flow support long-duration growth.",
-    catalyst: "AWS acceleration and advertising expansion.",
-    risk: "Margin upside fades if consumer spending slows.",
-    notes: ["Consumer plus cloud", "Secular growth", "Execution heavy"],
-  },
-  {
-    symbol: "GOOGL",
-    name: "Alphabet",
-    shares: 20,
-    price: 171.44,
-    avgCost: 145.8,
-    thesis: "Search cash flows fund AI investment without leverage stress.",
-    catalyst: "AI product adoption and cloud operating leverage.",
-    risk: "AI competition pressures search economics.",
-    notes: ["Cash-rich", "Ad cyclical", "AI optionality"],
-  },
-  {
-    symbol: "LLY",
-    name: "Eli Lilly",
-    shares: 8,
-    price: 804.15,
-    avgCost: 712.4,
-    thesis: "Obesity and diabetes franchise drives multi-year earnings growth.",
-    catalyst: "Manufacturing scale and expanded indications.",
-    risk: "High expectations leave little room for execution misses.",
-    notes: ["Healthcare growth", "Premium multiple", "Lower correlation"],
-  },
-  {
-    symbol: "XOM",
-    name: "Exxon Mobil",
-    shares: 26,
-    price: 109.32,
-    avgCost: 101.7,
-    thesis: "Cash generation and capital discipline support shareholder returns.",
-    catalyst: "Production growth and oil price support.",
-    risk: "Commodity exposure can drag if crude weakens.",
-    notes: ["Energy hedge", "Dividend support", "Cyclical"],
-  },
-];
-
 const seedMessages = {
   AAPL: [
     {
@@ -315,24 +224,27 @@ function parsePortfolioCsv(text) {
 
 function App() {
   const fileInputRef = useRef(null);
-  const [holdings, setHoldings] = useState(initialHoldings);
+  const [holdings, setHoldings] = useState([]);
   const [view, setView] = useState("portfolio");
-  const [selectedSymbol, setSelectedSymbol] = useState(initialHoldings[0].symbol);
+  const [selectedSymbol, setSelectedSymbol] = useState("");
   const [draft, setDraft] = useState("");
   const [portfolioDraft, setPortfolioDraft] = useState("");
   const [isHoldingChatLoading, setIsHoldingChatLoading] = useState(false);
   const [isPortfolioChatLoading, setIsPortfolioChatLoading] = useState(false);
+  const [isPortfolioLoading, setIsPortfolioLoading] = useState(true);
+  const [portfolioError, setPortfolioError] = useState("");
   const [chatError, setChatError] = useState("");
   const [isPortfolioChatExpanded, setIsPortfolioChatExpanded] = useState(false);
   const [isHoldingChatExpanded, setIsHoldingChatExpanded] = useState(false);
   const [messagesBySymbol, setMessagesBySymbol] = useState(seedMessages);
   const [portfolioMessages, setPortfolioMessages] = useState(portfolioSeedMessages);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [dataSource, setDataSource] = useState("api");
 
   const chatApiBase = useMemo(() => import.meta.env.VITE_API_BASE || "http://localhost:8000", []);
 
   const selectedHolding = useMemo(
-    () => holdings.find((holding) => holding.symbol === selectedSymbol) ?? holdings[0],
+    () => holdings.find((holding) => holding.symbol === selectedSymbol) ?? holdings[0] ?? null,
     [holdings, selectedSymbol],
   );
 
@@ -354,7 +266,68 @@ function App() {
     };
   }, [holdings]);
 
-  const currentMessages = messagesBySymbol[selectedHolding.symbol] ?? [];
+  const currentMessages = selectedHolding ? messagesBySymbol[selectedHolding.symbol] ?? [] : [];
+
+  useEffect(() => {
+    if (!holdings.length) {
+      setSelectedSymbol("");
+      return;
+    }
+
+    if (!selectedSymbol || !holdings.some((holding) => holding.symbol === selectedSymbol)) {
+      setSelectedSymbol(holdings[0].symbol);
+    }
+  }, [holdings, selectedSymbol]);
+
+  useEffect(() => {
+    if (dataSource !== "api") {
+      setIsPortfolioLoading(false);
+      setPortfolioError("");
+      return undefined;
+    }
+
+    let isDisposed = false;
+
+    async function loadPortfolio() {
+      setPortfolioError("");
+      setIsPortfolioLoading(true);
+
+      try {
+        const response = await fetch(`${chatApiBase}/api/portfolio`);
+
+        if (!response.ok) {
+          throw new Error(`Portfolio request failed with ${response.status}`);
+        }
+
+        const data = await response.json();
+        const nextHoldings = Array.isArray(data?.holdings) ? data.holdings : [];
+
+        if (!nextHoldings.length) {
+          throw new Error("Portfolio API returned no holdings.");
+        }
+
+        if (!isDisposed) {
+          setHoldings(nextHoldings);
+        }
+      } catch (error) {
+        if (!isDisposed) {
+          setPortfolioError(error instanceof Error ? error.message : "Unable to load the portfolio.");
+        }
+      } finally {
+        if (!isDisposed) {
+          setIsPortfolioLoading(false);
+        }
+      }
+    }
+
+    loadPortfolio();
+    const intervalId = window.setInterval(loadPortfolio, 60000);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [chatApiBase, dataSource]);
 
   useEffect(() => {
     if (!uploadMessage) {
@@ -368,9 +341,28 @@ function App() {
     return () => window.clearTimeout(timeoutId);
   }, [uploadMessage]);
 
-  function openHolding(symbol) {
+  async function openHolding(symbol) {
     setSelectedSymbol(symbol);
     setView("holding");
+
+    if (dataSource !== "api") {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${chatApiBase}/api/portfolio/${symbol}`);
+
+      if (!response.ok) {
+        throw new Error(`Holding request failed with ${response.status}`);
+      }
+
+      const latestHolding = await response.json();
+      setHoldings((current) =>
+        current.map((holding) => (holding.symbol === symbol ? { ...holding, ...latestHolding } : holding)),
+      );
+    } catch (error) {
+      setPortfolioError(error instanceof Error ? error.message : "Unable to refresh the selected holding.");
+    }
   }
 
   async function submitMessage() {
@@ -490,6 +482,7 @@ function App() {
         );
 
         setHoldings(parsedHoldings);
+        setDataSource("csv");
         setMessagesBySymbol(nextMessages);
         setSelectedSymbol(parsedHoldings[0].symbol);
         setView("portfolio");
@@ -579,10 +572,10 @@ function App() {
                     alignItems: "start",
                   }}
                 >
-                  <div>
-                    <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
+                    <div>
+                      <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
                     <div style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)", fontWeight: 700 }}>
-                      {money(portfolioStats.value)}
+                      {isPortfolioLoading ? "Loading..." : money(portfolioStats.value)}
                     </div>
                     <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
                       <StatChip label="Unrealized P/L" value={money(portfolioStats.pnl)} tone="accent" />
@@ -599,7 +592,7 @@ function App() {
                     }}
                   >
                     <InfoCard label="Largest position" value={portfolioStats.largestHolding?.symbol ?? "—"} />
-                    <InfoCard label="Imported holdings" value={`${holdings.length}`} />
+                    <InfoCard label="Tracked holdings" value={`${holdings.length}`} />
                     <InfoCard label="Portfolio return" value={pct(portfolioStats.pnlPct)} />
                     <InfoCard label="Estimated cost basis" value={money(portfolioStats.cost)} />
                   </div>
@@ -633,10 +626,29 @@ function App() {
                   <div>
                     <h2 style={{ fontSize: 24, marginBottom: 4 }}>Holdings</h2>
                     <div style={{ color: theme.muted, fontSize: 14 }}>
-                      Open any holding for stock-specific analysis
+                      {dataSource === "api"
+                        ? "Live prices refresh from the backend every 60 seconds"
+                        : "Viewing your uploaded CSV portfolio locally"}
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    {dataSource === "csv" && (
+                      <button
+                        onClick={() => setDataSource("api")}
+                        style={{
+                          border: `1px solid ${theme.line}`,
+                          background: "#fffdf8",
+                          color: theme.ink,
+                          borderRadius: 999,
+                          padding: "10px 16px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                          boxShadow: "0 10px 24px rgba(24, 34, 47, 0.06)",
+                        }}
+                      >
+                        Return to Live Portfolio
+                      </button>
+                    )}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -669,6 +681,32 @@ function App() {
                     gap: 12,
                   }}
                 >
+                  {portfolioError && (
+                    <div
+                      style={{
+                        border: `1px solid ${theme.line}`,
+                        borderRadius: 20,
+                        padding: 16,
+                        background: "#fff4f4",
+                        color: theme.rose,
+                      }}
+                    >
+                      {portfolioError}
+                    </div>
+                  )}
+                  {isPortfolioLoading && !holdings.length && (
+                    <div
+                      style={{
+                        border: `1px solid ${theme.line}`,
+                        borderRadius: 20,
+                        padding: 18,
+                        background: "#fffdf8",
+                        color: theme.muted,
+                      }}
+                    >
+                      Loading holdings from the backend...
+                    </div>
+                  )}
                   {holdings.map((holding) => {
                     const marketValue = holding.shares * holding.price;
                     const gainPct = ((holding.price - holding.avgCost) / holding.avgCost) * 100;
@@ -724,6 +762,7 @@ function App() {
             </section>
           </div>
         ) : (
+          selectedHolding && (
           <section
             style={{
               display: "block",
@@ -776,6 +815,14 @@ function App() {
                 <InfoCard label="Shares" value={`${selectedHolding.shares}`} />
                 <InfoCard label="Average cost" value={money(selectedHolding.avgCost)} />
                 <InfoCard
+                  label="Day change"
+                  value={
+                    selectedHolding.dayChangePct == null
+                      ? "—"
+                      : `${money(selectedHolding.dayChange ?? 0)} (${pct(selectedHolding.dayChangePct)})`
+                  }
+                />
+                <InfoCard
                   label="Unrealized return"
                   value={pct(((selectedHolding.price - selectedHolding.avgCost) / selectedHolding.avgCost) * 100)}
                 />
@@ -806,6 +853,7 @@ function App() {
               </div>
             </div>
           </section>
+          )
         )}
       </div>
       {uploadMessage && (

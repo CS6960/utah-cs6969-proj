@@ -1,7 +1,8 @@
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from agent import run_agent
+from portfolio import get_live_holding, get_live_portfolio
 
 app = FastAPI()
 
@@ -24,6 +25,25 @@ def hello():
 @app.get('/api/health')
 def health():
     return {'status': 'ok'}
+
+
+@app.get('/api/portfolio')
+def portfolio():
+    try:
+        return {'holdings': get_live_portfolio()}
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get('/api/portfolio/{symbol}')
+def portfolio_holding(symbol: str):
+    try:
+        return get_live_holding(symbol)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=f'Unknown symbol: {symbol.upper()}') from error
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
 
 @app.post('/api/agent')
 async def agent_endpoint(request: Request):
