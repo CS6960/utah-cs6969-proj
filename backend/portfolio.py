@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import csv
+from pathlib import Path
 from typing import Any
-
-import yfinance as yf
-
 
 PORTFOLIO_HOLDINGS = [
     {
@@ -88,6 +87,8 @@ PORTFOLIO_HOLDINGS = [
     },
 ]
 
+PRICE_DATA_PATH = Path(__file__).resolve().parent / "data" / "stock_prices.csv"
+
 
 def _safe_float(value: Any) -> float | None:
     if value is None:
@@ -99,48 +100,70 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
-def _pick_price(*sources: dict[str, Any]) -> float:
-    candidates = (
-        "lastPrice",
-        "regularMarketPrice",
-        "currentPrice",
-        "previousClose",
-        "previous_close",
-        "open",
-    )
+def _load_price_rows() -> dict[str, dict[str, Any]]:
+    if not PRICE_DATA_PATH.exists():
+        raise ValueError(f"Price data file not found: {PRICE_DATA_PATH}")
 
-    for source in sources:
-        for field_name in candidates:
-            price = _safe_float(source.get(field_name))
-            if price is not None:
-                return round(price, 2)
+    prices_by_symbol: dict[str, dict[str, Any]] = {}
 
-    raise ValueError("No market price available.")
+    with PRICE_DATA_PATH.open(newline="", encoding="utf-8") as csv_file:
+        reader = csv.DictReader(csv_file)
+
+        for row in reader:
+            symbol = (row.get("symbol") or "").strip().upper()
+
+            if not symbol:
+                continue
+
+            prices_by_symbol[symbol] = {
+                "price": _safe_float(row.get("price")),
+                "previousClose": _safe_float(row.get("previous_close")),
+                "currency": (row.get("currency") or "USD").strip() or "USD",
+            }
+
+    return prices_by_symbol
+
+
+def get_price_snapshot(symbol: str) -> dict[str, Any]:
+    normalized_symbol = symbol.upper()
+    prices_by_symbol = _load_price_rows()
+    price_row = prices_by_symbol.get(normalized_symbol)
+
+    if price_row is None:
+        raise KeyError(normalized_symbol)
+
+    price = price_row["price"]
+    previous_close = price_row["previousClose"]
+
+    if price is None:
+        raise ValueError(f"No price available for {normalized_symbol}.")
+
+    day_change = None if previous_close in (None, 0) else round(price - previous_close, 2)
+    day_change_pct = None if previous_close in (None, 0) else round((day_change / previous_close) * 100, 2)
+
+    return {
+        "symbol": normalized_symbol,
+        "price": round(price, 2),
+        "previousClose": None if previous_close is None else round(previous_close, 2),
+        "currency": price_row["currency"],
+        "dayChange": day_change,
+        "dayChangePct": day_change_pct,
+    }
 
 
 def get_live_portfolio() -> list[dict[str, Any]]:
     holdings: list[dict[str, Any]] = []
 
     for base_holding in PORTFOLIO_HOLDINGS:
-        ticker = yf.Ticker(base_holding["symbol"])
-        fast_info = dict(ticker.fast_info or {})
-        info = ticker.info or {}
-        price = _pick_price(fast_info, info)
-        previous_close = _safe_float(fast_info.get("previousClose") or fast_info.get("previous_close"))
-
-        if previous_close is None:
-            previous_close = _safe_float(info.get("previousClose"))
-
-        day_change = None if previous_close in (None, 0) else round(price - previous_close, 2)
-        day_change_pct = None if previous_close in (None, 0) else round((day_change / previous_close) * 100, 2)
+        snapshot = get_price_snapshot(base_holding["symbol"])
 
         holdings.append(
             {
                 **base_holding,
-                "price": price,
-                "currency": "USD",
-                "dayChange": day_change,
-                "dayChangePct": day_change_pct,
+                "price": snapshot["price"],
+                "currency": snapshot["currency"],
+                "dayChange": snapshot["dayChange"],
+                "dayChangePct": snapshot["dayChangePct"],
             }
         )
 

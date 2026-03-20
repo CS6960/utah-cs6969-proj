@@ -1,7 +1,7 @@
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
-import yfinance as yf
 from langchain_core.tools import tool
+from portfolio import get_price_snapshot
 
 @tool
 def get_stock_price(ticker: str) -> str:
@@ -10,16 +10,10 @@ def get_stock_price(ticker: str) -> str:
     Input should be a stock ticker (e.g., AAPL, TSLA, MSFT).
     """
     try:
-        stock = yf.Ticker(ticker)
-        # Fetch the most recent 1-day history to get the latest close
-        data = stock.history(period="1d")
-        if data.empty:
-            return f"Could not find price data for {ticker}."
-        
-        current_price = data['Close'].iloc[-1]
-        currency = stock.info.get('currency', 'USD')
-        
-        return f"The current price of {ticker} is {current_price:.2f} {currency}."
+        snapshot = get_price_snapshot(ticker)
+        return f"The current price of {snapshot['symbol']} is {snapshot['price']:.2f} {snapshot['currency']}."
+    except KeyError:
+        return f"Could not find price data for {ticker.upper()}."
     except Exception as e:
         return f"Error fetching price for {ticker}: {str(e)}"
     
