@@ -241,7 +241,17 @@ function App() {
   const [uploadMessage, setUploadMessage] = useState("");
   const [dataSource, setDataSource] = useState("api");
 
-  const chatApiBase = useMemo(() => import.meta.env.VITE_API_BASE || "http://localhost:8000", []);
+  const chatApiBase = useMemo(() => {
+    if (typeof window !== "undefined") {
+      const { hostname } = window.location;
+
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        return "http://localhost:8000";
+      }
+    }
+
+    return "";
+  }, []);
 
   const selectedHolding = useMemo(
     () => holdings.find((holding) => holding.symbol === selectedSymbol) ?? holdings[0] ?? null,
