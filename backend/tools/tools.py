@@ -1,7 +1,7 @@
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
 import yfinance as yf
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 @tool
 def get_stock_price(ticker: str) -> str:
