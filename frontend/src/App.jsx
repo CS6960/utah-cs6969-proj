@@ -95,6 +95,116 @@ function pct(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function escapeHtml(text) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function markdownToHtml(markdown) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let inCodeBlock = false;
+  let codeLines = [];
+  let paragraphLines = [];
+  let listType = null;
+  let listItems = [];
+
+  function flushParagraph() {
+    if (!paragraphLines.length) {
+      return;
+    }
+
+    const paragraphHtml = renderInlineMarkdown(paragraphLines.join("\n")).replace(/\n/g, "<br />");
+    blocks.push(`<p>${paragraphHtml}</p>`);
+    paragraphLines = [];
+  }
+
+  function flushList() {
+    if (!listItems.length || !listType) {
+      return;
+    }
+
+    const itemsHtml = listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("");
+    blocks.push(`<${listType}>${itemsHtml}</${listType}>`);
+    listItems = [];
+    listType = null;
+  }
+
+  function flushCodeBlock() {
+    if (!codeLines.length) {
+      return;
+    }
+
+    blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    codeLines = [];
+  }
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      flushParagraph();
+      flushList();
+
+      if (inCodeBlock) {
+        flushCodeBlock();
+      }
+
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+
+    const unorderedMatch = line.match(/^\s*[-*]\s+(.*)$/);
+    const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const nextListType = unorderedMatch ? "ul" : "ol";
+
+      if (listType && listType !== nextListType) {
+        flushList();
+      }
+
+      listType = nextListType;
+      listItems.push((unorderedMatch ?? orderedMatch)[1]);
+      continue;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+
+  if (inCodeBlock) {
+    flushCodeBlock();
+  }
+
+  return blocks.join("");
+}
+
 function buildReply(holding, prompt) {
   const text = prompt.toLowerCase();
 
@@ -1008,7 +1118,7 @@ function App() {
                       border: `1px solid ${theme.line}`,
                     }}
                   >
-                    {message.text}
+                    <MarkdownMessage text={message.text} />
                   </div>
                 ))}
               </div>
@@ -1186,7 +1296,7 @@ function App() {
                       border: `1px solid ${theme.line}`,
                     }}
                   >
-                    {message.text}
+                    <MarkdownMessage text={message.text} />
                   </div>
                 ))}
               </div>
@@ -1372,6 +1482,17 @@ function DetailBlock({ title, text }) {
       <div style={{ fontSize: 13, color: theme.muted, marginBottom: 8 }}>{title}</div>
       <div style={{ lineHeight: 1.7, fontSize: 16 }}>{text}</div>
     </div>
+  );
+}
+
+function MarkdownMessage({ text }) {
+  return (
+    <div
+      style={{
+        fontSize: 14,
+      }}
+      dangerouslySetInnerHTML={{ __html: markdownToHtml(text) }}
+    />
   );
 }
 

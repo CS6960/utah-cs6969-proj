@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from agent import run_agent
+from agents import run_agent
 from portfolio import get_live_holding, get_live_portfolio
 
 app = FastAPI()
@@ -49,7 +49,16 @@ def portfolio_holding(symbol: str):
 async def agent_endpoint(request: Request):
     data = await request.json()
     query = data.get('query', '')
-    result = run_agent(query)
+    role = data.get('role', 'financial_advisor')
+    result = run_agent(query, role=role)
+    return {'result': result}
+
+
+@app.post('/api/report-agent')
+async def report_agent_endpoint(request: Request):
+    data = await request.json()
+    query = data.get('query', '')
+    result = run_agent(query, role='financial_reports_embedding_specialist')
     return {'result': result}
 
 

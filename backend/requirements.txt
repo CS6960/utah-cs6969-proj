@@ -3,9 +3,12 @@ uvicorn==0.24.0
 
 python-dotenv==1.2.1
 langchain==1.0.7
+openai==1.109.1
+PyMuPDF==1.26.4
 langchain-core==1.2.15
 langchain-openai==1.1.10
 langchain-community==0.4.1
+langchain-text-splitters==0.3.11
 duckduckgo_search==8.1.1
 ddgs==9.10.0
 pytest==9.0.2
