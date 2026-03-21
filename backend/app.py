@@ -24,7 +24,7 @@ def hello():
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok'}
+    return {'status': 'ok', 'service': 'backend'}
 
 
 @app.get('/api/portfolio')
