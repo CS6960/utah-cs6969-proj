@@ -3,7 +3,6 @@ uvicorn==0.24.0
 
 python-dotenv==1.2.1
 langchain==1.0.7
-openai==1.109.1
 PyMuPDF==1.26.4
 langchain-core==1.2.15
 langchain-openai==1.1.10
