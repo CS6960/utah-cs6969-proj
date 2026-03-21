@@ -467,13 +467,16 @@ def embed_financial_report_content(report_id: str) -> dict:
         start_page = int(section["start_page"])
         end_page = int(section["end_page"])
         raw_section_text = _get_page_range_text(report["page_texts"], start_page, end_page)
-        processed_content = _process_section_to_rag_format(title, raw_section_text)
-        processed_content["metadata"] = {
-            "part": section["part"],
-            "item": section["item"],
+        processed_content = {
             "title": title,
-            "page_range": f"{start_page}-{end_page}",
-            "filename": filename,
+            "content": _process_section_to_rag_format(title, raw_section_text),
+            "metadata": {
+                "part": section["part"],
+                "item": section["item"],
+                "title": title,
+                "page_range": f"{start_page}-{end_page}",
+                "filename": filename,
+            },
         }
         final_rag_payload.append(processed_content)
 
