@@ -9,6 +9,7 @@ node_modules
 .claude/
 
 scout.sh
+internal/
 
 *.env
 .vscode/
