@@ -1,11 +1,12 @@
+import logging
 import os
-from dotenv import load_dotenv
 
-from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+
 from tools.tools import TOOLS
-import logging
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,12 +27,14 @@ model = ChatOpenAI(
 agent = create_agent(
     model,
     tools=TOOLS,
-    system_prompt="You are a helpful AI assistant. Use the provided tools to answer user queries. If you don't know the answer, say you don't know instead of making something up.",
+    system_prompt=(
+        "You are a helpful AI assistant. Use the provided tools to answer user queries."
+        " If you don't know the answer, say you don't know instead of making something up."
+    ),
 )
 
+
 def run_agent(query: str):
-    result = agent.invoke({
-        "messages": [HumanMessage(content=query)]
-    })
+    result = agent.invoke({"messages": [HumanMessage(content=query)]})
 
     return result["messages"][-1].content

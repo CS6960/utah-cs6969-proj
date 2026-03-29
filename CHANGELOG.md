@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `VITE_API_BASE` env var override restored in `chatApiBase` detection
 - Staleness indicator showing "Prices as of ..." when displaying fallback data
 - ESLint with React plugins configured (`eslint.config.js`, `npm run lint`)
+- Ruff linter + formatter configured for backend (`ruff.toml`, `ruff check .`, `ruff format .`)
 - CHANGELOG.md for tracking project changes
 
 ### Changed

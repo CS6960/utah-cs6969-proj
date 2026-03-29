@@ -14,8 +14,14 @@ npm test          # Testing
 
 All changes must be logged in `CHANGELOG.md` at the project root. Follow [Keep a Changelog](https://keepachangelog.com/) format. When completing a feature, bug fix, or refactor, add an entry under `[Unreleased]` with the appropriate category (Added, Changed, Fixed, Removed). Move entries to a versioned section when cutting a release.
 
+## Linting
+
+- **Frontend:** `cd frontend && npm run lint` (ESLint with React plugins)
+- **Backend:** `cd backend && ruff check . && ruff format --check .` (Ruff linter + formatter)
+- Run both before committing.
+
 ## TODO
-No test runner is configured yet. ESLint is available via `npx eslint`.
+No test runner is configured yet.
 
 ## Workflow
 

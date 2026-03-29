@@ -1,7 +1,9 @@
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
 from langchain_core.tools import tool
+
 from portfolio import get_price_snapshot
+
 
 @tool
 def get_stock_price(ticker: str) -> str:
@@ -15,8 +17,9 @@ def get_stock_price(ticker: str) -> str:
     except KeyError:
         return f"Could not find price data for {ticker.upper()}."
     except Exception as e:
-        return f"Error fetching price for {ticker}: {str(e)}"
-    
+        return f"Error fetching price for {ticker}: {e!s}"
+
+
 # Add more tool imports here as you create them
 
 TOOLS = [
