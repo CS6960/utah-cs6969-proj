@@ -32,3 +32,4 @@ Thumbs.db
 
 # Vite
 .vite
+vite.config.local.js

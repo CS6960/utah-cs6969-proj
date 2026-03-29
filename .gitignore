@@ -8,5 +8,7 @@ node_modules
 
 .claude/
 
+scout.sh
+
 *.env
 .vscode/
