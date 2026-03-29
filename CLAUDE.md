@@ -10,8 +10,12 @@ npm run build     # Production build to dist/
 npm run preview   # Serve production build locally
 npm test          # Testing
 ```
+## Changelog
+
+All changes must be logged in `CHANGELOG.md` at the project root. Follow [Keep a Changelog](https://keepachangelog.com/) format. When completing a feature, bug fix, or refactor, add an entry under `[Unreleased]` with the appropriate category (Added, Changed, Fixed, Removed). Move entries to a versioned section when cutting a release.
+
 ## TODO
-No test runner or linter is configured yet.
+No test runner is configured yet. ESLint is available via `npx eslint`.
 
 ## Workflow
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import fallbackHoldings, { FALLBACK_GENERATED_AT } from "./fallbackHoldings";
 
 const theme = {
   bg: "#f4efe7",
@@ -95,50 +96,6 @@ function pct(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function buildReply(holding, prompt) {
-  const text = prompt.toLowerCase();
-
-  if (text.includes("buy") || text.includes("add")) {
-    return `If you add ${holding.symbol}, I would treat it as an incremental thesis check. Compare current price ${money(holding.price)} against your average cost ${money(holding.avgCost)} and decide whether you are averaging up because conviction improved, not because momentum feels good.`;
-  }
-
-  if (text.includes("sell") || text.includes("trim")) {
-    return `For ${holding.symbol}, trim logic should be driven by sizing or thesis drift. If the thesis still holds, a partial trim is cleaner than a full exit when concentration is the main issue.`;
-  }
-
-  if (text.includes("risk")) {
-    return `The main risk for ${holding.symbol} is: ${holding.risk} I would also ask whether this position is correlated with your other holdings and whether that hidden concentration is acceptable.`;
-  }
-
-  if (text.includes("thesis") || text.includes("why")) {
-    return `Your current thesis reads: ${holding.thesis} The adviser angle is to define one measurable condition that would prove this thesis wrong within the next 2 quarters.`;
-  }
-
-  return `For ${holding.symbol}, I would frame the next decision around three points: thesis durability, valuation versus expected growth, and target position size in the full portfolio.`;
-}
-
-function buildPortfolioReply(prompt, stats) {
-  const text = prompt.toLowerCase();
-
-  if (text.includes("risk") || text.includes("risky")) {
-    return "At the portfolio level, the biggest risk is concentration in mega-cap growth and AI-related names. I would check whether that overlap is intentional and whether you want more balance from healthcare, financials, or cash.";
-  }
-
-  if (text.includes("divers") || text.includes("balance")) {
-    return "The portfolio is diversified across several sectors, but the dollar exposure still leans heavily toward technology and growth. Diversification is not just ticker count, it is how differently those positions behave in the same market regime.";
-  }
-
-  if (text.includes("best") || text.includes("strongest")) {
-    return "The strongest portfolio holdings appear to be the high-conviction compounders like MSFT and AAPL, while NVDA likely contributes the most upside and the most sizing pressure.";
-  }
-
-  if (text.includes("cash") || text.includes("deploy")) {
-    return `If you are deploying fresh capital into a portfolio worth ${money(stats.value)}, I would add only where conviction improved or where the current weight is still below the intended target size.`;
-  }
-
-  return "At the overall portfolio level, I would focus on three questions: where you are overexposed, which holdings deserve additional capital, and what would break the portfolio thesis over the next year.";
-}
-
 function parseCsvLine(line) {
   const cells = [];
   let current = "";
@@ -224,7 +181,8 @@ function parsePortfolioCsv(text) {
 
 function App() {
   const fileInputRef = useRef(null);
-  const [holdings, setHoldings] = useState([]);
+  const [holdings, setHoldings] = useState(fallbackHoldings);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState(FALLBACK_GENERATED_AT);
   const [view, setView] = useState("portfolio");
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [draft, setDraft] = useState("");
@@ -242,6 +200,9 @@ function App() {
   const [dataSource, setDataSource] = useState("api");
 
   const chatApiBase = useMemo(() => {
+    const envBase = import.meta.env.VITE_API_BASE;
+    if (envBase !== undefined) return envBase;
+
     if (typeof window !== "undefined") {
       const { hostname } = window.location;
 
@@ -318,6 +279,7 @@ function App() {
 
         if (!isDisposed) {
           setHoldings(nextHoldings);
+          setLastPriceUpdate(new Date().toISOString());
         }
       } catch (error) {
         if (!isDisposed) {
@@ -331,7 +293,7 @@ function App() {
     }
 
     loadPortfolio();
-    const intervalId = window.setInterval(loadPortfolio, 60000);
+    const intervalId = window.setInterval(loadPortfolio, 300000);
 
     return () => {
       isDisposed = true;
@@ -585,8 +547,13 @@ function App() {
                     <div>
                       <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
                     <div style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)", fontWeight: 700 }}>
-                      {isPortfolioLoading ? "Loading..." : money(portfolioStats.value)}
+                      {isPortfolioLoading && !holdings.length ? "Loading..." : money(portfolioStats.value)}
                     </div>
+                    {lastPriceUpdate === FALLBACK_GENERATED_AT && (
+                      <div style={{ color: theme.muted, fontSize: 13, marginTop: 4 }}>
+                        Prices as of {new Date(lastPriceUpdate).toLocaleDateString()} — refreshing from server...
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
                       <StatChip label="Unrealized P/L" value={money(portfolioStats.pnl)} tone="accent" />
                       <StatChip label="Return" value={pct(portfolioStats.pnlPct)} tone="gold" />
@@ -637,7 +604,7 @@ function App() {
                     <h2 style={{ fontSize: 24, marginBottom: 4 }}>Holdings</h2>
                     <div style={{ color: theme.muted, fontSize: 14 }}>
                       {dataSource === "api"
-                        ? "Live prices refresh from the backend every 60 seconds"
+                        ? `Prices update from server · Last: ${new Date(lastPriceUpdate).toLocaleString()}`
                         : "Viewing your uploaded CSV portfolio locally"}
                     </div>
                   </div>
@@ -704,7 +671,7 @@ function App() {
                       {portfolioError}
                     </div>
                   )}
-                  {isPortfolioLoading && !holdings.length && (
+                  {isPortfolioLoading && holdings.length === 0 && (
                     <div
                       style={{
                         border: `1px solid ${theme.line}`,
@@ -827,7 +794,7 @@ function App() {
                 <InfoCard
                   label="Day change"
                   value={
-                    selectedHolding.dayChangePct == null
+                    selectedHolding.dayChangePct === null || selectedHolding.dayChangePct === undefined
                       ? "—"
                       : `${money(selectedHolding.dayChange ?? 0)} (${pct(selectedHolding.dayChangePct)})`
                   }
@@ -1328,15 +1295,6 @@ function StatChip({ label, value, tone }) {
     >
       <div style={{ fontSize: 12, opacity: 0.75 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{value}</div>
-    </div>
-  );
-}
-
-function HoldingRow({ label, value }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-      <span style={{ color: theme.muted, fontSize: 14 }}>{label}</span>
-      <span style={{ fontWeight: 600 }}>{value}</span>
     </div>
   );
 }
