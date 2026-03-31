@@ -16,7 +16,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv("API_KEY")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "baai/bge-m3")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nvidia/nv-embed-v1")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
