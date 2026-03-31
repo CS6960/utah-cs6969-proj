@@ -1,0 +1,29 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = [
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "F",     # pyflakes
+  "I",     # isort (import sorting)
+  "N",     # pep8-naming
+  "UP",    # pyupgrade (modernize syntax)
+  "B",     # flake8-bugbear (common bugs)
+  "S",     # flake8-bandit (security)
+  "A",     # flake8-builtins (shadowing builtins)
+  "C4",    # flake8-comprehensions
+  "SIM",   # flake8-simplify
+  "RUF",   # ruff-specific rules
+]
+ignore = [
+  "S101",  # allow assert in tests
+]
+
+[lint.per-file-ignores]
+"tools/*.py" = ["S110"]  # allow bare except pass in tool handlers
+"app.py" = ["S104"]      # binding to 0.0.0.0 is intentional for server
+
+[format]
+quote-style = "double"
+indent-style = "space"

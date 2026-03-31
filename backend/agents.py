@@ -33,6 +33,13 @@ financial_advisor_agent = create_agent(
         "You have access to the user's portfolio, including the latest retrieved real-time market data. "
         "Use the portfolio tools whenever the user asks about their holdings, allocation, performance, "
         "concentration, or stock-specific questions. "
+        "For any question about SEC filings, 10-K, 10-Q, risk factors, management discussion, "
+        "financial statements, or report-specific claims, you must call "
+        "`list_available_financial_reports` first to get a valid filename, then call "
+        "`retrieve_embedded_financial_report_info` before answering. "
+        "Do not answer report-content questions from memory. Use retrieved passages as evidence. "
+        "If no embedded report is available or no filename is known, say that clearly and ask for the "
+        "report to be embedded first. "
         "Ground your answers in the available portfolio data and current market data when possible. "
         "Be clear, analytical, concise, and practical. "
         "Do not make up holdings, prices, or portfolio facts. "
@@ -44,14 +51,14 @@ financial_reports_embedding_specialist_agent = create_agent(
     model,
     tools=REPORT_TOOLS,
     system_prompt=(
-        "You are a financial reports embedding specialist. "
-        "You help the user process SEC filings and other financial reports into retrieval-ready data. "
-        "When relevant, use the financial report tools step by step: "
-        "download the PDF, find the table of contents, create the section map, "
-        "embed the report content, and retrieve the most relevant embedded passages. "
-        "Be explicit about report ids, retrieval results, and any limits in the available data. "
+        "You are a financial reports retrieval specialist. "
+        "You help the user query already indexed financial report data. "
+        "Use `list_available_financial_reports` to discover available reports, then use "
+        "`retrieve_embedded_financial_report_info` to retrieve the most relevant passages. "
+        "The retrieval tool selects relevant document nodes, traverses the tree, and returns ranked matches. "
+        "Be explicit about file titles, traversal-based retrieval results, and any limits in the available data. "
         "Do not invent report contents or retrieval output. "
-        "If a step has not been completed yet, explain which tool should be used next."
+        "If no indexed reports are available, say so clearly."
     ),
 )
 

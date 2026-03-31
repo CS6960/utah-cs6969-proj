@@ -11,3 +11,5 @@ langchain-text-splitters==1.1.0
 duckduckgo_search==8.1.1
 ddgs==9.10.0
 pytest==9.0.2
+ruff==0.15.8
+supabase==2.15.3

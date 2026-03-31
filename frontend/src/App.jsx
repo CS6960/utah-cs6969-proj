@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import fallbackHoldings, { FALLBACK_GENERATED_AT } from "./fallbackHoldings";
 
 const theme = {
   bg: "#f4efe7",
@@ -334,7 +335,8 @@ function parsePortfolioCsv(text) {
 
 function App() {
   const fileInputRef = useRef(null);
-  const [holdings, setHoldings] = useState([]);
+  const [holdings, setHoldings] = useState(fallbackHoldings);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState(FALLBACK_GENERATED_AT);
   const [view, setView] = useState("portfolio");
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [draft, setDraft] = useState("");
@@ -352,6 +354,9 @@ function App() {
   const [dataSource, setDataSource] = useState("api");
 
   const chatApiBase = useMemo(() => {
+    const envBase = import.meta.env.VITE_API_BASE;
+    if (envBase !== undefined) return envBase;
+
     if (typeof window !== "undefined") {
       const { hostname } = window.location;
 
@@ -428,6 +433,7 @@ function App() {
 
         if (!isDisposed) {
           setHoldings(nextHoldings);
+          setLastPriceUpdate(new Date().toISOString());
         }
       } catch (error) {
         if (!isDisposed) {
@@ -441,7 +447,7 @@ function App() {
     }
 
     loadPortfolio();
-    const intervalId = window.setInterval(loadPortfolio, 60000);
+    const intervalId = window.setInterval(loadPortfolio, 300000);
 
     return () => {
       isDisposed = true;
@@ -692,11 +698,16 @@ function App() {
                     alignItems: "start",
                   }}
                 >
-                    <div>
-                      <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
+                  <div>
+                    <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
                     <div style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)", fontWeight: 700 }}>
-                      {isPortfolioLoading ? "Loading..." : money(portfolioStats.value)}
+                      {isPortfolioLoading && !holdings.length ? "Loading..." : money(portfolioStats.value)}
                     </div>
+                    {lastPriceUpdate === FALLBACK_GENERATED_AT && (
+                      <div style={{ color: theme.muted, fontSize: 13, marginTop: 4 }}>
+                        Prices as of {new Date(lastPriceUpdate).toLocaleDateString()} — refreshing from server...
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
                       <StatChip label="Unrealized P/L" value={money(portfolioStats.pnl)} tone="accent" />
                       <StatChip label="Return" value={pct(portfolioStats.pnlPct)} tone="gold" />
@@ -747,7 +758,7 @@ function App() {
                     <h2 style={{ fontSize: 24, marginBottom: 4 }}>Holdings</h2>
                     <div style={{ color: theme.muted, fontSize: 14 }}>
                       {dataSource === "api"
-                        ? "Live prices refresh from the backend every 60 seconds"
+                        ? `Prices update from server · Last: ${new Date(lastPriceUpdate).toLocaleString()}`
                         : "Viewing your uploaded CSV portfolio locally"}
                     </div>
                   </div>
@@ -814,7 +825,7 @@ function App() {
                       {portfolioError}
                     </div>
                   )}
-                  {isPortfolioLoading && !holdings.length && (
+                  {isPortfolioLoading && holdings.length === 0 && (
                     <div
                       style={{
                         border: `1px solid ${theme.line}`,
@@ -883,96 +894,96 @@ function App() {
           </div>
         ) : (
           selectedHolding && (
-          <section
-            style={{
-              display: "block",
-            }}
-          >
-            <div
+            <section
               style={{
-                background: "rgba(255, 250, 243, 0.86)",
-                border: `1px solid ${theme.line}`,
-                borderRadius: 28,
-                padding: 24,
-                boxShadow: theme.shadow,
+                display: "block",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                <div>
-                  <button
-                    onClick={() => setView("portfolio")}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: theme.muted,
-                      cursor: "pointer",
-                      fontSize: 14,
-                      padding: 0,
-                      marginBottom: 18,
-                    }}
-                  >
-                    ← Back to portfolio
-                  </button>
-                  <div style={{ color: theme.muted, marginBottom: 6 }}>{selectedHolding.name}</div>
-                  <h2 style={{ fontSize: 42, lineHeight: 1 }}>{selectedHolding.symbol}</h2>
-                </div>
-
-                <div style={{ minWidth: 220 }}>
-                  <div style={{ color: theme.muted, marginBottom: 4 }}>Current price</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{money(selectedHolding.price)}</div>
-                </div>
-              </div>
-
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 14,
-                  marginTop: 22,
-                  marginBottom: 24,
+                  background: "rgba(255, 250, 243, 0.86)",
+                  border: `1px solid ${theme.line}`,
+                  borderRadius: 28,
+                  padding: 24,
+                  boxShadow: theme.shadow,
                 }}
               >
-                <InfoCard label="Shares" value={`${selectedHolding.shares}`} />
-                <InfoCard label="Average cost" value={money(selectedHolding.avgCost)} />
-                <InfoCard
-                  label="Day change"
-                  value={
-                    selectedHolding.dayChangePct == null
-                      ? "—"
-                      : `${money(selectedHolding.dayChange ?? 0)} (${pct(selectedHolding.dayChangePct)})`
-                  }
-                />
-                <InfoCard
-                  label="Unrealized return"
-                  value={pct(((selectedHolding.price - selectedHolding.avgCost) / selectedHolding.avgCost) * 100)}
-                />
-              </div>
-
-              <DetailBlock title="Investment thesis" text={selectedHolding.thesis} />
-              <DetailBlock title="Near-term catalyst" text={selectedHolding.catalyst} />
-              <DetailBlock title="Main risk" text={selectedHolding.risk} />
-
-              <div style={{ marginTop: 24 }}>
-                <div style={{ fontSize: 13, color: theme.muted, marginBottom: 10 }}>Portfolio notes</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  {selectedHolding.notes.map((note) => (
-                    <span
-                      key={note}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                  <div>
+                    <button
+                      onClick={() => setView("portfolio")}
                       style={{
-                        padding: "10px 14px",
-                        background: "#fffdf8",
-                        borderRadius: 999,
-                        border: `1px solid ${theme.line}`,
+                        border: "none",
+                        background: "transparent",
+                        color: theme.muted,
+                        cursor: "pointer",
                         fontSize: 14,
+                        padding: 0,
+                        marginBottom: 18,
                       }}
                     >
-                      {note}
-                    </span>
-                  ))}
+                      ← Back to portfolio
+                    </button>
+                    <div style={{ color: theme.muted, marginBottom: 6 }}>{selectedHolding.name}</div>
+                    <h2 style={{ fontSize: 42, lineHeight: 1 }}>{selectedHolding.symbol}</h2>
+                  </div>
+
+                  <div style={{ minWidth: 220 }}>
+                    <div style={{ color: theme.muted, marginBottom: 4 }}>Current price</div>
+                    <div style={{ fontSize: 32, fontWeight: 700 }}>{money(selectedHolding.price)}</div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 14,
+                    marginTop: 22,
+                    marginBottom: 24,
+                  }}
+                >
+                  <InfoCard label="Shares" value={`${selectedHolding.shares}`} />
+                  <InfoCard label="Average cost" value={money(selectedHolding.avgCost)} />
+                  <InfoCard
+                    label="Day change"
+                    value={
+                      selectedHolding.dayChangePct === null || selectedHolding.dayChangePct === undefined
+                        ? "—"
+                        : `${money(selectedHolding.dayChange ?? 0)} (${pct(selectedHolding.dayChangePct)})`
+                    }
+                  />
+                  <InfoCard
+                    label="Unrealized return"
+                    value={pct(((selectedHolding.price - selectedHolding.avgCost) / selectedHolding.avgCost) * 100)}
+                  />
+                </div>
+
+                <DetailBlock title="Investment thesis" text={selectedHolding.thesis} />
+                <DetailBlock title="Near-term catalyst" text={selectedHolding.catalyst} />
+                <DetailBlock title="Main risk" text={selectedHolding.risk} />
+
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ fontSize: 13, color: theme.muted, marginBottom: 10 }}>Portfolio notes</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {selectedHolding.notes.map((note) => (
+                      <span
+                        key={note}
+                        style={{
+                          padding: "10px 14px",
+                          background: "#fffdf8",
+                          borderRadius: 999,
+                          border: `1px solid ${theme.line}`,
+                          fontSize: 14,
+                        }}
+                      >
+                        {note}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
           )
         )}
       </div>
@@ -1438,15 +1449,6 @@ function StatChip({ label, value, tone }) {
     >
       <div style={{ fontSize: 12, opacity: 0.75 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{value}</div>
-    </div>
-  );
-}
-
-function HoldingRow({ label, value }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-      <span style={{ color: theme.muted, fontSize: 14 }}>{label}</span>
-      <span style={{ fontWeight: 600 }}>{value}</span>
     </div>
   );
 }

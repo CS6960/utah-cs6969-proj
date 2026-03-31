@@ -94,7 +94,7 @@ def chat_text_completion(prompt):
 # --- NEW: FIND THE TOC PAGE ---
 
 
-def find_toc_page(doc):
+def find_toc_page(doc, file_title):
     """Scans the beginning of the PDF to find which page is the Table of Contents."""
     # We usually only need to check the first 5 pages
     scan_limit = min(5, len(doc))
@@ -104,12 +104,15 @@ def find_toc_page(doc):
 
     prompt = """
     Analyze the following pages from an SEC filing. 
-    Identify the page number that contains the primary 'Table of Contents' list.
-    Return a JSON object: {"toc_page": int}
+    Identify the page number that contains the primary Table of Contents and the title of the document with company name.
+    Return a JSON object: {"toc_page": int, "document_title": str}
+    Example response: {"toc_page": 2, "document_title": "NVIDIA Corporation 10-K for Fiscal Year 2024"}
     """
     
     res = chat_json_completion(f"{prompt}\n\n{preview_text}")
-    return res.get("toc_page", 2) # Default to 2 if unsure
+    res["toc_page"] = res.get("toc_page", 2)  # Default to 2 if unsure
+    res["document_title"] = res.get("document_title", file_title)  # Default to file_title if unsure
+    return res
 
 # --- UPDATED: ORCHESTRATOR (PASS IN ONLY TOC TEXT) ---
 def create_section_map(toc_text):
@@ -193,13 +196,14 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 pdf_path = "nvidia_10k.pdf"
-filename = os.path.basename(pdf_path)
 
 doc = fitz.open(pdf_path)
 
 # 1. Locate TOC Page
 print("Locating Table of Contents...")
-toc_page_num = find_toc_page(doc)
+toc_return = find_toc_page(doc, pdf_path)
+toc_page_num = toc_return["toc_page"]
+file_title = toc_return["document_title"]
 
 print(f"Identified TOC on Page {toc_page_num}")
 
@@ -232,7 +236,7 @@ for item in section_map['sections']:
             "item": item['item'],
             "title": title,
             "page_range": f"{start}-{end}",
-            "filename": filename,
+            "file_title": file_title,
         },
     }
 
@@ -259,9 +263,9 @@ def compact_text(text, limit=NODE_SUMMARY_CHAR_LIMIT):
     return normalized[:limit].rstrip() + " ..."
 
 
-def build_tree_nodes(payload, source_filename):
-    document_id = str(uuid.uuid4())
+def build_tree_nodes(payload, file_title):
     root_id = str(uuid.uuid4())
+    document_id = root_id  # Use the same ID for document and root node for simplicity
     section_titles = [item["title"] for item in payload]
     root_text = "Document outline:\n" + "\n".join(section_titles)
 
@@ -272,14 +276,14 @@ def build_tree_nodes(payload, source_filename):
             "parent_id": None,
             "node_type": "document",
             "depth": 0,
-            "sequence": 0,
-            "title": source_filename,
-            "filename": source_filename,
+            "embedding": 0,
+            "title": file_title,
+            "file_title": file_title,
             "text": root_text,
-            "embedding_text": build_embedding_text(source_filename, source_filename, compact_text(root_text)),
+            "embedding_text": build_embedding_text(file_title, file_title, compact_text(root_text)),
             "metadata": {
-                "title": source_filename,
-                "filename": source_filename,
+                "title": file_title,
+                "file_title": file_title,
                 "section_count": len(payload),
             },
         }
@@ -292,22 +296,22 @@ def build_tree_nodes(payload, source_filename):
         section_metadata = {
             **item.get("metadata", {}),
             "title": item["title"],
-            "filename": item["metadata"].get("filename", source_filename),
+            "file_title": item["metadata"].get("file_title", file_title),
         }
 
         nodes.append({
             "id": section_id,
-            "document_id": document_id,
             "parent_id": root_id,
+            "document_id": document_id,
             "node_type": "section",
             "depth": 1,
-            "sequence": section_index,
+            "embedding": section_index,
             "title": item["title"],
-            "filename": item["metadata"].get("filename", source_filename),
+            "file_title": item["metadata"].get("file_title", file_title),
             "text": section_text,
             "embedding_text": build_embedding_text(
                 item["title"],
-                item["metadata"].get("filename", source_filename),
+                item["metadata"].get("file_title", file_title),
                 f"Section summary: {section_preview}",
             ),
             "metadata": section_metadata,
@@ -317,23 +321,23 @@ def build_tree_nodes(payload, source_filename):
         for chunk_index, chunk in enumerate(leaf_chunks):
             nodes.append({
                 "id": str(uuid.uuid4()),
-                "document_id": document_id,
                 "parent_id": section_id,
+                "document_id": document_id,
                 "node_type": "chunk",
                 "depth": 2,
-                "sequence": chunk_index,
+                "embedding": chunk_index,
                 "title": item["title"],
-                "filename": item["metadata"].get("filename", source_filename),
+                "file_title": item["metadata"].get("file_title", file_title),
                 "text": chunk,
                 "embedding_text": build_embedding_text(
                     item["title"],
-                    item["metadata"].get("filename", source_filename),
+                    item["metadata"].get("file_title", file_title),
                     chunk,
                 ),
                 "metadata": {
                     **section_metadata,
                     "title": item["title"],
-                    "filename": item["metadata"].get("filename", source_filename),
+                    "file_title": item["metadata"].get("file_title", file_title),
                     "chunk_index": chunk_index,
                 },
             })
@@ -342,7 +346,7 @@ def build_tree_nodes(payload, source_filename):
 
 
 def process_and_index_payload(payload, supabase_client):
-    nodes_for_indexing = build_tree_nodes(payload, filename)
+    nodes_for_indexing = build_tree_nodes(payload, file_title)
     print(f"Prepared {len(nodes_for_indexing)} tree nodes. Starting indexer...")
     index_nodes(nodes_for_indexing, supabase_client)
 
@@ -368,15 +372,15 @@ def index_nodes(nodes, supabase):
         try:
             batch_rows.append({
                 "id": node["id"],
-                "document_id": node["document_id"],
                 "parent_id": node["parent_id"],
-                "node_type": node["node_type"],
                 "title": node["title"],
-                "filename": node["filename"],
+                "file_title": node["file_title"],
                 "text": node["text"],
                 "depth": node["depth"],
-                "sequence": node["sequence"],
+                "embedding": node["embedding"],
                 "metadata": node["metadata"],
+                "document_id": node["document_id"],
+                "node_type": node["node_type"],
             })
             batch_inputs.append(node["embedding_text"])
 
@@ -407,8 +411,8 @@ def chunk_text(text, chunk_size=800, overlap=150):
     return chunks
 
 
-def build_embedding_text(title, filename, text):
-    return f"Title: {title}\nFilename: {filename}\nText: {text}"
+def build_embedding_text(title, file_title, text):
+    return f"Title: {title}\nFile Title: {file_title}\nText: {text}"
 
 
 
@@ -419,7 +423,7 @@ def embed_batch(texts):
     texts = [t for t in texts if t.strip()]
 
     response = client.embeddings.create(
-        model="baai/bge-m3",
+        model="nvidia/nv-embed-v1",
         input=texts,
         encoding_format="float",
         extra_body={"truncate": "NONE"}
@@ -434,16 +438,17 @@ process_and_index_payload(final_rag_payload, supabase)
 def embed_query(query):
 
     response = client.embeddings.create(
-        model="baai/bge-m3",
+        model="nvidia/nv-embed-v1",
         input=[query],
-        encoding_format="float"
+        encoding_format="float",
+        extra_body={"truncate": "NONE"}
     )
 
     return response.data[0].embedding
 
 def fetch_node(node_id):
     result = supabase.table("document_tree_nodes").select(
-        "id, document_id, parent_id, node_type, title, filename, text, depth, sequence, metadata"
+        "id, document_id, node_type, parent_id, title, file_title, text, depth, embedding, metadata"
     ).eq("id", node_id).limit(1).execute()
     return result.data[0] if result.data else None
 
@@ -528,7 +533,7 @@ for query in eval_queries:
         lineage_titles = " > ".join(node["title"] for node in r.get("lineage", []))
         print(f"\n  Chunk {i+1} | Title: {r['title']} | Similarity: {r.get('similarity', 'N/A'):.4f}")
         print(f"  Lineage: {lineage_titles}")
-        print(f"  Filename: {r.get('filename', 'N/A')}")
+        print(f"  file_title: {r.get('file_title', 'N/A')}")
         
         # 2. Run the Judge
         judgment = evaluate_relevance(query, r['text'])
