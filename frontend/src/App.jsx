@@ -96,6 +96,160 @@ function pct(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function escapeHtml(text) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function markdownToHtml(markdown) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let inCodeBlock = false;
+  let codeLines = [];
+  let paragraphLines = [];
+  let listType = null;
+  let listItems = [];
+
+  function flushParagraph() {
+    if (!paragraphLines.length) {
+      return;
+    }
+
+    const paragraphHtml = renderInlineMarkdown(paragraphLines.join("\n")).replace(/\n/g, "<br />");
+    blocks.push(`<p>${paragraphHtml}</p>`);
+    paragraphLines = [];
+  }
+
+  function flushList() {
+    if (!listItems.length || !listType) {
+      return;
+    }
+
+    const itemsHtml = listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("");
+    blocks.push(`<${listType}>${itemsHtml}</${listType}>`);
+    listItems = [];
+    listType = null;
+  }
+
+  function flushCodeBlock() {
+    if (!codeLines.length) {
+      return;
+    }
+
+    blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    codeLines = [];
+  }
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      flushParagraph();
+      flushList();
+
+      if (inCodeBlock) {
+        flushCodeBlock();
+      }
+
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+
+    const unorderedMatch = line.match(/^\s*[-*]\s+(.*)$/);
+    const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const nextListType = unorderedMatch ? "ul" : "ol";
+
+      if (listType && listType !== nextListType) {
+        flushList();
+      }
+
+      listType = nextListType;
+      listItems.push((unorderedMatch ?? orderedMatch)[1]);
+      continue;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+
+  if (inCodeBlock) {
+    flushCodeBlock();
+  }
+
+  return blocks.join("");
+}
+
+function buildReply(holding, prompt) {
+  const text = prompt.toLowerCase();
+
+  if (text.includes("buy") || text.includes("add")) {
+    return `If you add ${holding.symbol}, I would treat it as an incremental thesis check. Compare current price ${money(holding.price)} against your average cost ${money(holding.avgCost)} and decide whether you are averaging up because conviction improved, not because momentum feels good.`;
+  }
+
+  if (text.includes("sell") || text.includes("trim")) {
+    return `For ${holding.symbol}, trim logic should be driven by sizing or thesis drift. If the thesis still holds, a partial trim is cleaner than a full exit when concentration is the main issue.`;
+  }
+
+  if (text.includes("risk")) {
+    return `The main risk for ${holding.symbol} is: ${holding.risk} I would also ask whether this position is correlated with your other holdings and whether that hidden concentration is acceptable.`;
+  }
+
+  if (text.includes("thesis") || text.includes("why")) {
+    return `Your current thesis reads: ${holding.thesis} The adviser angle is to define one measurable condition that would prove this thesis wrong within the next 2 quarters.`;
+  }
+
+  return `For ${holding.symbol}, I would frame the next decision around three points: thesis durability, valuation versus expected growth, and target position size in the full portfolio.`;
+}
+
+function buildPortfolioReply(prompt, stats) {
+  const text = prompt.toLowerCase();
+
+  if (text.includes("risk") || text.includes("risky")) {
+    return "At the portfolio level, the biggest risk is concentration in mega-cap growth and AI-related names. I would check whether that overlap is intentional and whether you want more balance from healthcare, financials, or cash.";
+  }
+
+  if (text.includes("divers") || text.includes("balance")) {
+    return "The portfolio is diversified across several sectors, but the dollar exposure still leans heavily toward technology and growth. Diversification is not just ticker count, it is how differently those positions behave in the same market regime.";
+  }
+
+  if (text.includes("best") || text.includes("strongest")) {
+    return "The strongest portfolio holdings appear to be the high-conviction compounders like MSFT and AAPL, while NVDA likely contributes the most upside and the most sizing pressure.";
+  }
+
+  if (text.includes("cash") || text.includes("deploy")) {
+    return `If you are deploying fresh capital into a portfolio worth ${money(stats.value)}, I would add only where conviction improved or where the current weight is still below the intended target size.`;
+  }
+
+  return "At the overall portfolio level, I would focus on three questions: where you are overexposed, which holdings deserve additional capital, and what would break the portfolio thesis over the next year.";
+}
+
 function parseCsvLine(line) {
   const cells = [];
   let current = "";
@@ -544,8 +698,8 @@ function App() {
                     alignItems: "start",
                   }}
                 >
-                    <div>
-                      <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
+                  <div>
+                    <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
                     <div style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)", fontWeight: 700 }}>
                       {isPortfolioLoading && !holdings.length ? "Loading..." : money(portfolioStats.value)}
                     </div>
@@ -740,96 +894,96 @@ function App() {
           </div>
         ) : (
           selectedHolding && (
-          <section
-            style={{
-              display: "block",
-            }}
-          >
-            <div
+            <section
               style={{
-                background: "rgba(255, 250, 243, 0.86)",
-                border: `1px solid ${theme.line}`,
-                borderRadius: 28,
-                padding: 24,
-                boxShadow: theme.shadow,
+                display: "block",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                <div>
-                  <button
-                    onClick={() => setView("portfolio")}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: theme.muted,
-                      cursor: "pointer",
-                      fontSize: 14,
-                      padding: 0,
-                      marginBottom: 18,
-                    }}
-                  >
-                    ← Back to portfolio
-                  </button>
-                  <div style={{ color: theme.muted, marginBottom: 6 }}>{selectedHolding.name}</div>
-                  <h2 style={{ fontSize: 42, lineHeight: 1 }}>{selectedHolding.symbol}</h2>
-                </div>
-
-                <div style={{ minWidth: 220 }}>
-                  <div style={{ color: theme.muted, marginBottom: 4 }}>Current price</div>
-                  <div style={{ fontSize: 32, fontWeight: 700 }}>{money(selectedHolding.price)}</div>
-                </div>
-              </div>
-
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 14,
-                  marginTop: 22,
-                  marginBottom: 24,
+                  background: "rgba(255, 250, 243, 0.86)",
+                  border: `1px solid ${theme.line}`,
+                  borderRadius: 28,
+                  padding: 24,
+                  boxShadow: theme.shadow,
                 }}
               >
-                <InfoCard label="Shares" value={`${selectedHolding.shares}`} />
-                <InfoCard label="Average cost" value={money(selectedHolding.avgCost)} />
-                <InfoCard
-                  label="Day change"
-                  value={
-                    selectedHolding.dayChangePct === null || selectedHolding.dayChangePct === undefined
-                      ? "—"
-                      : `${money(selectedHolding.dayChange ?? 0)} (${pct(selectedHolding.dayChangePct)})`
-                  }
-                />
-                <InfoCard
-                  label="Unrealized return"
-                  value={pct(((selectedHolding.price - selectedHolding.avgCost) / selectedHolding.avgCost) * 100)}
-                />
-              </div>
-
-              <DetailBlock title="Investment thesis" text={selectedHolding.thesis} />
-              <DetailBlock title="Near-term catalyst" text={selectedHolding.catalyst} />
-              <DetailBlock title="Main risk" text={selectedHolding.risk} />
-
-              <div style={{ marginTop: 24 }}>
-                <div style={{ fontSize: 13, color: theme.muted, marginBottom: 10 }}>Portfolio notes</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  {selectedHolding.notes.map((note) => (
-                    <span
-                      key={note}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                  <div>
+                    <button
+                      onClick={() => setView("portfolio")}
                       style={{
-                        padding: "10px 14px",
-                        background: "#fffdf8",
-                        borderRadius: 999,
-                        border: `1px solid ${theme.line}`,
+                        border: "none",
+                        background: "transparent",
+                        color: theme.muted,
+                        cursor: "pointer",
                         fontSize: 14,
+                        padding: 0,
+                        marginBottom: 18,
                       }}
                     >
-                      {note}
-                    </span>
-                  ))}
+                      ← Back to portfolio
+                    </button>
+                    <div style={{ color: theme.muted, marginBottom: 6 }}>{selectedHolding.name}</div>
+                    <h2 style={{ fontSize: 42, lineHeight: 1 }}>{selectedHolding.symbol}</h2>
+                  </div>
+
+                  <div style={{ minWidth: 220 }}>
+                    <div style={{ color: theme.muted, marginBottom: 4 }}>Current price</div>
+                    <div style={{ fontSize: 32, fontWeight: 700 }}>{money(selectedHolding.price)}</div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 14,
+                    marginTop: 22,
+                    marginBottom: 24,
+                  }}
+                >
+                  <InfoCard label="Shares" value={`${selectedHolding.shares}`} />
+                  <InfoCard label="Average cost" value={money(selectedHolding.avgCost)} />
+                  <InfoCard
+                    label="Day change"
+                    value={
+                      selectedHolding.dayChangePct === null || selectedHolding.dayChangePct === undefined
+                        ? "—"
+                        : `${money(selectedHolding.dayChange ?? 0)} (${pct(selectedHolding.dayChangePct)})`
+                    }
+                  />
+                  <InfoCard
+                    label="Unrealized return"
+                    value={pct(((selectedHolding.price - selectedHolding.avgCost) / selectedHolding.avgCost) * 100)}
+                  />
+                </div>
+
+                <DetailBlock title="Investment thesis" text={selectedHolding.thesis} />
+                <DetailBlock title="Near-term catalyst" text={selectedHolding.catalyst} />
+                <DetailBlock title="Main risk" text={selectedHolding.risk} />
+
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ fontSize: 13, color: theme.muted, marginBottom: 10 }}>Portfolio notes</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {selectedHolding.notes.map((note) => (
+                      <span
+                        key={note}
+                        style={{
+                          padding: "10px 14px",
+                          background: "#fffdf8",
+                          borderRadius: 999,
+                          border: `1px solid ${theme.line}`,
+                          fontSize: 14,
+                        }}
+                      >
+                        {note}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
           )
         )}
       </div>
@@ -975,7 +1129,7 @@ function App() {
                       border: `1px solid ${theme.line}`,
                     }}
                   >
-                    {message.text}
+                    <MarkdownMessage text={message.text} />
                   </div>
                 ))}
               </div>
@@ -1153,7 +1307,7 @@ function App() {
                       border: `1px solid ${theme.line}`,
                     }}
                   >
-                    {message.text}
+                    <MarkdownMessage text={message.text} />
                   </div>
                 ))}
               </div>
@@ -1330,6 +1484,17 @@ function DetailBlock({ title, text }) {
       <div style={{ fontSize: 13, color: theme.muted, marginBottom: 8 }}>{title}</div>
       <div style={{ lineHeight: 1.7, fontSize: 16 }}>{text}</div>
     </div>
+  );
+}
+
+function MarkdownMessage({ text }) {
+  return (
+    <div
+      style={{
+        fontSize: 14,
+      }}
+      dangerouslySetInnerHTML={{ __html: markdownToHtml(text) }}
+    />
   );
 }
 
