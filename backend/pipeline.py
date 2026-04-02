@@ -181,12 +181,18 @@ def run_pipeline(query: str) -> dict:
 
         return {"result": result, "tools_called": evidence.tools_called}
     except Exception:
-        logger.exception("Pipeline failed, falling back to run_agent")
+        logger.exception("Pipeline failed, running deterministic fallback.")
         try:
-            from agents import run_agent
-
-            result, tools_called = run_agent(query, role="financial_advisor")
-            return {"result": result, "tools_called": tools_called}
+            evidence_text, tools_called = _run_fallback(query)
+            if not evidence_text:
+                return {"result": "Service temporarily unavailable.", "tools_called": []}
+            fallback_result = model.invoke(
+                [
+                    SystemMessage(content=STRATEGIST_SYSTEM_PROMPT),
+                    HumanMessage(content=f"QUESTION: {query}\n\nEVIDENCE PACKAGE:\n{evidence_text}"),
+                ]
+            )
+            return {"result": fallback_result.content, "tools_called": tools_called}
         except Exception:
-            logger.exception("Fallback run_agent also failed")
+            logger.exception("Deterministic fallback also failed")
             return {"result": "Service temporarily unavailable.", "tools_called": []}
