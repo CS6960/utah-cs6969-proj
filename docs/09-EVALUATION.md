@@ -79,7 +79,7 @@ Each stage represents a development milestone. The system is evaluated after eac
 
 | Phase | Stage | What Changes | Status | Eval Avg |
 |-------|-------|-------------|--------|----------|
-| 0 | `baseline` | Single advisor agent with DuckDuckGo, Yahoo News, stock price tools | **Pending re-eval** | — |
+| 0 | `baseline` | Single advisor agent with DuckDuckGo, Yahoo News, stock price tools | **Done** | 1.0 |
 | 1 | `rag_reports` | Retriever + Strategist pipeline with SEC filing retrieval | Not started | — |
 | 2 | `news_agent` | + News corpus tool for temporal awareness | Not started | — |
 | 3 | `graph` | + Entity-relationship graph for cross-sector reasoning | Not started | — |
@@ -327,11 +327,9 @@ python script/seed_news.py --source ddg      # use DuckDuckGo instead of Yahoo F
 
 ## Baseline Results
 
-A prior 3-dimension baseline scored 1.0. The baseline must be re-evaluated with the current 5-dimension framework (after migration 002) to establish the floor for all dimensions.
+The baseline evaluation scored **1.0 across all 5 dimensions** (LLM judge and human reviewer). The agent failed to use its available tools and instead asked the user for portfolio data it already had access to, producing generic non-answers. One noise citation (TSLA) was detected. Zero tools were called.
 
-```bash
-python script/run_eval.py --stage baseline --score
-```
+Human evaluation (Mikhail Berlay — finance minor, market experience) confirmed the LLM judge scores.
 
 ## Files
 

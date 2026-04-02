@@ -403,11 +403,11 @@ def print_report():
         g = sum(r["groundedness"] for r in scored) / len(scored)
         c = sum(r["completeness"] for r in scored) / len(scored)
         a = sum(r["actionability"] for r in scored) / len(scored)
-        tp = sum(r.get("temporal_precision", 0) for r in scored) / len(scored)
-        rr = sum(r.get("relational_recall", 0) for r in scored) / len(scored)
+        tp = sum((r.get("temporal_precision") or 0) for r in scored) / len(scored)
+        rr = sum((r.get("relational_recall") or 0) for r in scored) / len(scored)
         avg = (g + c + a + tp + rr) / 5
 
-        noise_total = sum(r.get("noise_citation_count", 0) for r in stage_rows)
+        noise_total = sum((r.get("noise_citation_count") or 0) for r in stage_rows)
         tools_used = sum(1 for r in stage_rows if r.get("tools_called"))
 
         print(
