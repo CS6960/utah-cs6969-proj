@@ -73,18 +73,43 @@ Defensives: JPM (valuation sanctuary at 14x P/E) and LLY (secular growth immune 
 
 ## Development Stages
 
-Each stage represents a development milestone. The system is evaluated after each stage is implemented.
+Each stage represents a development milestone. The system is evaluated after each stage is implemented. **Stages are sequential — a stage cannot begin until the previous stage is implemented, evaluated, and its gate criteria are met.**
 
-| Stage          | What Changes                                                 |
-|----------------|--------------------------------------------------------------|
-| `baseline`     | Advisor agent with DuckDuckGo, Yahoo News, stock price tools |
-| `rag_reports`  | + SEC filing retrieval via tree-RAG                          |
-| `news_agent`   | + Dedicated news/sentiment agent with stored news corpus     |
-| `critic`       | + Adversarial critic agent that challenges recommendations   |
+### Stage Status
+
+| Phase | Stage | What Changes | Status | Eval Avg |
+|-------|-------|-------------|--------|----------|
+| 0 | `baseline` | Single advisor agent with DuckDuckGo, Yahoo News, stock price tools | **Done** | 1.0 |
+| 1 | `rag_reports` | Retriever + Strategist pipeline with SEC filing retrieval | Not started | — |
+| 2 | `news_agent` | + News corpus tool for temporal awareness | Not started | — |
+| 3 | `graph` | + Entity-relationship graph for cross-sector reasoning | Not started | — |
+| 4 | `critic` | + Adversarial critic agent with revision loop | Not started | — |
+
+### Stage-to-Architecture Mapping
+
+| Stage | Pipeline Architecture | Proposal Pillar |
+|-------|----------------------|-----------------|
+| `baseline` | Monolithic advisor (no pipeline) | — |
+| `rag_reports` | Retriever → Strategist (2-agent) | The Librarian (Recursive Retrieval) |
+| `news_agent` | Retriever (+ news tool) → Strategist | The Librarian (Temporal RAG) |
+| `graph` | Retriever (+ graph tool) → Strategist | The Map (LazyGraphRAG) |
+| `critic` | Retriever → Strategist → Critic → Revision (full pipeline) | The Debate (Adversarial Synthesis) |
+
+### Gate Criteria
+
+Each stage has specific criteria that must be met before advancing. These are documented in detail in `docs/11-PIPELINE-PLAN.md`. Summary:
+
+| Gate | Key Criteria |
+|------|-------------|
+| Phase 0 → 1 | Baseline eval recorded; all 5 scoring dimensions operational; tool tracking working |
+| Phase 1 → 2 | Pipeline orchestrator working; `tools_called` non-empty; groundedness avg > 1.0 |
+| Phase 2 → 3 | News tool called in all 4 questions; temporal precision avg > 2.5; noise citations = 0 |
+| Phase 3 → 4 | Graph seeded (30+ rows); relational recall avg > 3.0; responses contain causal chains |
+| Phase 4 (final) | Full pipeline runs; all dimensions improve over Phase 3; responses include dissent |
 
 ## Scoring Rubric
 
-Each response is scored 1–5 on three dimensions by an LLM judge.
+Each response is scored 1–5 on five dimensions by an LLM judge.
 
 ### Groundedness (1–5)
 
@@ -122,6 +147,63 @@ Does it give specific, usable advice?
 | 4     | Specific recommendations with reasoning for most holdings |
 | 5     | Concrete recommendations with reasoning and risk context |
 
+### Temporal Precision (1–5)
+
+Does the response cite facts from the correct time window?
+
+| Score | Criteria |
+|-------|----------|
+| 1     | No temporal grounding — response could apply to any time period |
+| 2     | Vague time references ("recently") but no specific dates |
+| 3     | Some dated facts but misses key events or uses wrong dates |
+| 4     | Most cited facts are correctly dated and from the evaluation window |
+| 5     | All key facts are date-specific and accurately placed in March 24–31 |
+
+### Relational Recall (1–5)
+
+Does the response identify cross-sector causal chains?
+
+| Score | Criteria |
+|-------|----------|
+| 1     | Lists facts in isolation with no causal connections |
+| 2     | Implies connections but doesn't make them explicit |
+| 3     | Identifies 1–2 cross-sector links but misses others |
+| 4     | Identifies most causal chains, traces multi-hop reasoning |
+| 5     | Explicitly traces all key cause-effect relationships across sectors |
+
+## Temporal Facts Reference
+
+The judge receives date-stamped facts per question that the agent should cite. These are defined in `script/run_eval.py:TEMPORAL_FACTS`. Examples:
+
+- "Iran closed the Strait of Hormuz on March 4, 2026"
+- "Dow entered correction on March 27, 2026"
+- "XOM +42% YTD as of late March 2026 due to oil surge"
+
+## Relational Connections Reference
+
+The judge receives expected cross-sector causal chains per question. These are defined in `script/run_eval.py:RELATIONAL_CONNECTIONS`. Examples:
+
+- "Iran conflict → Strait of Hormuz closure → oil price surge"
+- "Oil surge → XOM benefits while tech sells off (inverse dynamic within portfolio)"
+- "Flight-to-quality dynamic: risk-off days → money flows from tech into JPM and LLY"
+
+## Noise Citation Detection
+
+In addition to the 5 scored dimensions, the eval runner checks whether the agent cited non-portfolio tickers from the noise corpus. The following tickers are flagged:
+
+- **Noise corpus tickers**: TSLA, PFE
+- **Other non-portfolio tickers**: META, NFLX, BABA, AMD, INTC, BA, DIS, UBER
+
+A well-performing agent should produce zero noise citations. Any noise citations are logged in the `noise_citations` and `noise_citation_count` fields of `eval_runs`.
+
+## Tool Usage Tracking
+
+The backend now returns the list of tools the agent invoked during each query. This is stored in the `tools_called` column of `eval_runs` and displayed in the report. This allows the eval to distinguish:
+
+- Agent used its tools and produced a good answer (tools working)
+- Agent used its tools but gave a bad answer (tools need improvement)
+- Agent ignored its tools entirely (agent prompt or routing issue)
+
 ## Scoring Method
 
 ### Primary: LLM-as-Judge
@@ -130,9 +212,11 @@ Automated scoring using the same LLM (Qwen 3.5-122B via NVIDIA API). The judge r
 
 - The preset question
 - The ground truth reference answer
+- Date-stamped temporal facts the agent should cite
+- Cross-sector relational connections the agent should identify
 - The agent's response
 
-It returns integer scores for each dimension plus a brief explanation. The prompt is defined in `script/run_eval.py:JUDGE_PROMPT`.
+It returns integer scores for each of the 5 dimensions plus a brief explanation. The prompt is defined in `script/run_eval.py:JUDGE_PROMPT`.
 
 ### Secondary: Human Review
 
@@ -175,24 +259,30 @@ The noise ratio starts at ~5 articles and can be increased in later stages to st
 
 ### `eval_runs`
 
-| Column        | Type         | Description |
-|---------------|-------------|-------------|
-| id            | uuid (PK)   | Auto-generated |
-| stage         | text        | Development stage identifier |
-| question      | text        | The preset question asked |
-| response      | text        | Agent's full response |
-| tools_called  | text[]      | Tools the agent invoked |
-| groundedness  | integer     | 1–5 score |
-| completeness  | integer     | 1–5 score |
-| actionability | integer     | 1–5 score |
-| notes         | text        | Judge explanation or human notes |
-| created_at    | timestamptz | Evaluation timestamp |
+| Column               | Type         | Description |
+|----------------------|-------------|-------------|
+| id                   | uuid (PK)   | Auto-generated |
+| stage                | text        | Development stage identifier |
+| question             | text        | The preset question asked |
+| response             | text        | Agent's full response |
+| tools_called         | text[]      | Tools the agent invoked |
+| groundedness         | integer     | 1–5 score |
+| completeness         | integer     | 1–5 score |
+| actionability        | integer     | 1–5 score |
+| temporal_precision   | integer     | 1–5 score |
+| relational_recall    | integer     | 1–5 score |
+| noise_citations      | text[]      | Non-portfolio tickers cited in response |
+| noise_citation_count | integer     | Count of noise citations |
+| notes                | text        | Judge explanation or human notes |
+| created_at           | timestamptz | Evaluation timestamp |
 
 ## Running Evaluations
 
 ### Prerequisites
 
-1. Apply the migration: run `backend/migrations/001_news_and_eval_tables.sql` in the Supabase SQL editor
+1. Apply migrations:
+   - `backend/migrations/001_news_and_eval_tables.sql`
+   - `backend/migrations/002_eval_schema_update.sql`
 2. Seed news articles: `python script/seed_news.py`
 3. Seed noise articles: `python script/seed_news.py --noise`
 4. Start the backend: `cd backend && python app.py`
@@ -205,6 +295,8 @@ python script/run_eval.py --stage baseline --score
 
 The `--score` flag enables LLM-as-judge scoring. Without it, responses are stored but not scored.
 
+Valid stages: `baseline`, `rag_reports`, `news_agent`, `graph`, `critic`.
+
 ### Compare Stages
 
 ```bash
@@ -214,12 +306,13 @@ python script/run_eval.py --report
 Prints a comparison table across all recorded stages:
 
 ```
-Stage                Ground.  Compl.   Action.  Avg
-----------------------------------------------------
-baseline             1.0      1.0      1.0      1.0
-rag_reports          ...      ...      ...      ...
-news_agent           ...      ...      ...      ...
-critic               ...      ...      ...      ...
+Stage                Ground.  Compl.  Action.  Temp.P  Rel.R   Avg     Noise  Tools
+------------------------------------------------------------------------------------
+baseline             1.0      1.0     1.0      1.0     1.0     1.0     0      0/4
+rag_reports          ...      ...     ...      ...     ...     ...     ...    ...
+news_agent           ...      ...     ...      ...     ...     ...     ...    ...
+graph                ...      ...     ...      ...     ...     ...     ...    ...
+critic               ...      ...     ...      ...     ...     ...     ...    ...
 ```
 
 ### Seed News Options
@@ -244,6 +337,7 @@ This establishes the floor for measuring improvement.
 |------|---------|
 | `docs/09-EVALUATION.md` | This document |
 | `backend/migrations/001_news_and_eval_tables.sql` | Supabase schema for news + eval tables |
+| `backend/migrations/002_eval_schema_update.sql` | Schema update for temporal/relational/noise columns |
 | `script/seed_news.py` | Fetch and insert news articles into the corpus |
 | `script/run_eval.py` | Run evaluations, score with LLM judge, print reports |
 | `backend/portfolio.py` | Static portfolio definition (8 holdings) |

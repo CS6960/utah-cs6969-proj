@@ -74,4 +74,11 @@ def run_agent(query: str, role: str = "financial_advisor"):
         "messages": [HumanMessage(content=query)]
     })
 
-    return result["messages"][-1].content
+    # Extract tool names from intermediate messages
+    tools_called = []
+    for msg in result["messages"]:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tools_called.append(tc["name"])
+
+    return result["messages"][-1].content, tools_called

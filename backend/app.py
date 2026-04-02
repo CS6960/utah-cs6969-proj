@@ -50,16 +50,16 @@ async def agent_endpoint(request: Request):
     data = await request.json()
     query = data.get('query', '')
     role = data.get('role', 'financial_advisor')
-    result = run_agent(query, role=role)
-    return {'result': result}
+    result, tools_called = run_agent(query, role=role)
+    return {'result': result, 'tools_called': tools_called}
 
 
 @app.post('/api/report-agent')
 async def report_agent_endpoint(request: Request):
     data = await request.json()
     query = data.get('query', '')
-    result = run_agent(query, role='financial_reports_embedding_specialist')
-    return {'result': result}
+    result, tools_called = run_agent(query, role='financial_reports_embedding_specialist')
+    return {'result': result, 'tools_called': tools_called}
 
 
 if __name__ == "__main__":

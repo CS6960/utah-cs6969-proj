@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Temporal Precision scoring dimension (1–5) to evaluation rubric with per-question date-stamped ground truth facts
+- Relational Recall scoring dimension (1–5) to evaluation rubric with per-question cross-sector causal chain annotations
+- `graph` evaluation stage between `news_agent` and `critic` to isolate LazyGraphRAG contribution
+- Noise citation detection: eval runner flags non-portfolio tickers (TSLA, PFE, etc.) in agent responses
+- Tool usage tracking: backend returns `tools_called` from agent runs, eval stores and reports tool usage per stage
+- Migration `002_eval_schema_update.sql` adding `temporal_precision`, `relational_recall`, `noise_citations`, `noise_citation_count` to `eval_runs`
+- Pipeline implementation plan with 4 phases, gate criteria, and status tracking (`docs/11-PIPELINE-PLAN.md`)
+- Phase status tables in `docs/08-AGENTS-TOOLS.md`, `docs/09-EVALUATION.md`, and `internal/evaluation_methodology.md`
+- Gate criteria for each phase transition documented in all three docs
+
+### Changed
+- `run_agent()` now returns `(response, tools_called)` tuple instead of just `response`
+- `/api/agent` and `/api/report-agent` endpoints now include `tools_called` in response JSON
+- LLM judge prompt expanded from 3 to 5 scoring dimensions with temporal facts and relational connections as additional context
+- Eval report table now shows all 5 dimensions, noise citation count, and tool usage ratio
+- `--stage` argument now validates against the canonical stage list
+
+### Fixed
+- `tools_called` was always stored as empty list; backend now extracts tool names from LangChain intermediate messages
+
 - Evaluation framework for measuring agent quality across development stages
 - Supabase migration for `news_articles` and `eval_runs` tables (`backend/migrations/001_news_and_eval_tables.sql`)
 - News seeding script with support for relevant and noise articles (`script/seed_news.py`)
