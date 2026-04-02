@@ -46,6 +46,31 @@ python app.py     # Run dev server on http://localhost:5000
 - `GET /` – Hello World message
 - `GET /api/health` – Health check
 
+## Supabase Stock Tables
+
+The repo now includes a minimal Supabase schema and seed script for 8 stocks plus 7 daily close-price rows per stock.
+
+### Files
+
+- `backend/supabase/schema.sql` – creates `stocks` and `stock_prices`
+- `backend/scripts/seed_supabase_stocks.py` – seeds 8 symbols and 56 historical close-price rows
+- `backend/.env.example` – required environment variables
+
+### Run It
+
+```bash
+cd backend
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Then set your Supabase project values in `.env`, run the SQL in the Supabase SQL editor, and seed:
+
+```bash
+cd backend
+python scripts/seed_supabase_stocks.py
+```
+
 ## Development Workflow
 
 1. Create feature branch from `main`

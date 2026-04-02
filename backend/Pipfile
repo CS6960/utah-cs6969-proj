@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = "==0.104.1"
+uvicorn = "==0.24.0"
+python-dotenv = "==1.2.1"
+supabase = "==2.15.3"
+langchain = "==1.0.7"
+langchain-core = "==1.2.15"
+langchain-openai = "==1.1.10"
+langchain-community = "==0.4.1"
+duckduckgo-search = "==8.1.1"
+ddgs = "==9.10.0"
+pytest = "==9.0.2"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"

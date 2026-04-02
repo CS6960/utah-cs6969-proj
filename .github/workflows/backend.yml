@@ -12,7 +12,40 @@ on:
       - 'backend/**'
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app_changed: ${{ steps.filter.outputs.app }}
+      tests_changed: ${{ steps.filter.outputs.tests }}
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          app:
+            - 'backend/**'
+            - '!backend/**/*_test.py'
+            - '!backend/**/test_*.py'
+          tests:
+            - 'backend/**/*_test.py'
+            - 'backend/**/test_*.py'
+    - name: Summarize changed path categories
+      run: |
+        echo "### Backend change summary" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "- app_changed: \`${{ steps.filter.outputs.app }}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "- tests_changed: \`${{ steps.filter.outputs.tests }}\`" >> "$GITHUB_STEP_SUMMARY"
+        if [ "${{ steps.filter.outputs.app }}" = "true" ]; then
+          echo "- deploy_after_ci: \`true\`" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "- deploy_after_ci: \`false\`" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.app_changed == 'true' || needs.changes.outputs.tests_changed == 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -34,4 +67,20 @@ jobs:
     - name: Run tests
       run: python -m pytest
       working-directory: backend
-      if: hashFiles('backend/**/*_test.py') != ''
+      if: needs.changes.outputs.tests_changed == 'true' || hashFiles('backend/**/*_test.py', 'backend/**/test_*.py') != ''
+
+  deploy:
+    needs: [changes, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.changes.outputs.app_changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Trigger Render deploy hook
+      run: curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL"
+      env:
+        RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    - name: Summarize deploy trigger
+      run: |
+        echo "### Render deploy" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "- deploy_hook_triggered: \`true\`" >> "$GITHUB_STEP_SUMMARY"

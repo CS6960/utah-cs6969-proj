@@ -9,7 +9,7 @@ from portfolio import get_live_holding, get_live_portfolio
 
 app = FastAPI()
 
-# Enable CORS
+# Enable CORS for the SPA and local development clients.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
