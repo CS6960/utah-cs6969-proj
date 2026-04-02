@@ -8,7 +8,7 @@ Transform the monolithic single-agent advisor into a 3-agent sequential pipeline
 
 | Phase | Stage | Status | Eval Score (avg) | Gate Met |
 |-------|-------|--------|------------------|----------|
-| 0 | `baseline` | **Done** | 1.0 | Yes |
+| 0 | `baseline` | **Pending re-eval** | — | No |
 | 1 | `rag_reports` | Not started | — | — |
 | 2 | `news_agent` | Not started | — | — |
 | 3 | `graph` | Not started | — | — |
@@ -73,20 +73,21 @@ Frontend reads `result` and `tools_called` — both stay in the same position. `
 
 ## Phase 0: `baseline` — Current state
 
-**Status: Done**
+**Status: Pending re-eval**
 
 Single `financial_advisor` agent with DuckDuckGo, Yahoo Finance, stock prices, and report retrieval tools. No pipeline, no separation of retrieval and analysis.
 
 ### Eval result
 
-All dimensions scored **1.0**. Agent failed to use its available tools and produced generic non-answers.
+Prior 3-dimension baseline scored 1.0. Needs re-evaluation with the current 5-dimension framework after migration 002.
 
 ### Gate: Phase 0 → Phase 1
 
-- [x] Baseline eval recorded in Supabase
-- [x] Eval report shows 1.0 across all dimensions
+- [ ] Baseline eval recorded in Supabase **with all 5 dimensions** (run: `python script/run_eval.py --stage baseline --score`)
+- [ ] Eval report shows scores across all 5 dimensions
 - [x] Eval framework has all 5 scoring dimensions (groundedness, completeness, actionability, temporal precision, relational recall)
 - [x] Tool tracking returns actual tool names (not empty lists)
+- [x] Migration 002 applied (temporal_precision, relational_recall, noise columns)
 
 ---
 

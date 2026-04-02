@@ -6,7 +6,7 @@ This document describes the backend agents, their tools, the pipeline architectu
 
 | Phase | Stage | Architecture | Status |
 |-------|-------|-------------|--------|
-| 0 | `baseline` | Single advisor agent (monolithic) | **Done** — scored 1.0 avg |
+| 0 | `baseline` | Single advisor agent (monolithic) | **Pending re-eval** (prior 3-dim scored 1.0) |
 | 1 | `rag_reports` | Retriever + Strategist with SEC filings | Not started |
 | 2 | `news_agent` | + News corpus tool for temporal awareness | Not started |
 | 3 | `graph` | + Entity-relationship graph for cross-sector reasoning | Not started |
