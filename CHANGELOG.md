@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Evaluation framework for measuring agent quality across development stages
+- Supabase migration for `news_articles` and `eval_runs` tables (`backend/migrations/001_news_and_eval_tables.sql`)
+- News seeding script with support for relevant and noise articles (`script/seed_news.py`)
+- Baseline evaluation runner with LLM-as-judge scoring (`script/run_eval.py`)
+- March 24–31, 2026 market analysis with ground truth answers (`internal/march_24_31_analysis.md`)
+- Evaluation methodology documentation (`internal/evaluation_methodology.md`)
+- Supabase credentials added to backend `.env.example`
+
 - Embedded fallback portfolio data for instant first paint (`frontend/src/fallbackHoldings.js`)
 - `<link rel="preconnect">` to Render backend in `index.html` for early TCP/TLS handshake
 - `VITE_API_BASE` env var override restored in `chatApiBase` detection
