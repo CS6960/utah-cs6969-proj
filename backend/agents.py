@@ -6,8 +6,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 
-from tools.tools import ADVISOR_TOOLS, REPORT_TOOLS
-
+from tools.tools import ADVISOR_TOOLS, REPORT_TOOLS, RETRIEVER_TOOLS
 
 logging.basicConfig(level=logging.INFO)
 
@@ -62,23 +61,53 @@ financial_reports_embedding_specialist_agent = create_agent(
     ),
 )
 
+RETRIEVER_SYSTEM_PROMPT = (
+    "You are a financial research retriever. Your job is to gather evidence, NOT to give advice.\n\n"
+    "Given the user's question and portfolio context, systematically gather relevant data:\n"
+    "1. Check stock prices for relevant holdings using get_stock_price.\n"
+    "2. Use list_available_financial_reports to find SEC filings.\n"
+    "3. Use retrieve_embedded_financial_report_info for relevant excerpts.\n\n"
+    "Summarize findings in structured format:\n"
+    "- PRICE DATA: [list prices]\n"
+    "- FILING EXCERPTS: [list passages with source]\n"
+    "- KEY FACTS: [most important facts uncovered]\n\n"
+    "Do NOT give investment advice. Only report what the data says."
+)
+
+STRATEGIST_SYSTEM_PROMPT = (
+    "You are a financial strategist. You receive a user question and an evidence package "
+    "gathered by a research agent.\n\n"
+    "Synthesize the evidence into clear, actionable analysis:\n"
+    "1. Cross-reference sources for consistency.\n"
+    "2. Identify second-order effects across sectors.\n"
+    "3. Cite specific evidence for each claim.\n"
+    "4. Provide directional recommendations (add/hold/trim/avoid) with confidence.\n"
+    "5. Be explicit about what evidence supports vs. what is uncertain."
+)
+
+retriever_agent = create_agent(
+    model,
+    tools=RETRIEVER_TOOLS,
+    system_prompt=RETRIEVER_SYSTEM_PROMPT,
+)
+
 AGENTS = {
     "financial_advisor": financial_advisor_agent,
     "financial_reports_embedding_specialist": financial_reports_embedding_specialist_agent,
 }
 
 
-def run_agent(query: str, role: str = "financial_advisor"):
-    agent = AGENTS.get(role, financial_advisor_agent)
-    result = agent.invoke({
-        "messages": [HumanMessage(content=query)]
-    })
-
-    # Extract tool names from intermediate messages
+def extract_tools_called(messages: list) -> list[str]:
     tools_called = []
-    for msg in result["messages"]:
+    for msg in messages:
         if hasattr(msg, "tool_calls") and msg.tool_calls:
             for tc in msg.tool_calls:
                 tools_called.append(tc["name"])
+    return tools_called
 
+
+def run_agent(query: str, role: str = "financial_advisor"):
+    agent = AGENTS.get(role, financial_advisor_agent)
+    result = agent.invoke({"messages": [HumanMessage(content=query)]})
+    tools_called = extract_tools_called(result["messages"])
     return result["messages"][-1].content, tools_called

@@ -1,11 +1,11 @@
 import logging
 
-from tools.financial_reports_tools import list_available_financial_reports, retrieve_embedded_financial_report_info
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
 from langchain_core.tools import tool
 
 from portfolio import get_price_snapshot
+from tools.financial_reports_tools import list_available_financial_reports, retrieve_embedded_financial_report_info
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,7 @@ def get_stock_price(ticker: str) -> str:
         return f"Could not find price data for {ticker.upper()}."
     except Exception as e:
         logger.exception("get_stock_price failed. ticker=%s error=%s", ticker, e)
-        return f"Error fetching price for {ticker}: {str(e)}"
-
+        return f"Error fetching price for {ticker}: {e!s}"
 
 
 ADVISOR_TOOLS = [
@@ -44,6 +43,12 @@ ADVISOR_TOOLS = [
 ]
 
 REPORT_TOOLS = [
+    list_available_financial_reports,
+    retrieve_embedded_financial_report_info,
+]
+
+RETRIEVER_TOOLS = [
+    get_stock_price,
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,
 ]

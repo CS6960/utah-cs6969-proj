@@ -2,7 +2,9 @@ import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+
 from agents import run_agent
+from pipeline import run_pipeline
 from portfolio import get_live_holding, get_live_portfolio
 
 app = FastAPI()
@@ -48,18 +50,20 @@ def portfolio_holding(symbol: str):
 @app.post("/api/agent")
 async def agent_endpoint(request: Request):
     data = await request.json()
-    query = data.get('query', '')
-    role = data.get('role', 'financial_advisor')
+    query = data.get("query", "")
+    role = data.get("role", "financial_advisor")
+    if role in (None, "financial_advisor"):
+        return run_pipeline(query)
     result, tools_called = run_agent(query, role=role)
-    return {'result': result, 'tools_called': tools_called}
+    return {"result": result, "tools_called": tools_called}
 
 
-@app.post('/api/report-agent')
+@app.post("/api/report-agent")
 async def report_agent_endpoint(request: Request):
     data = await request.json()
-    query = data.get('query', '')
-    result, tools_called = run_agent(query, role='financial_reports_embedding_specialist')
-    return {'result': result, 'tools_called': tools_called}
+    query = data.get("query", "")
+    result, tools_called = run_agent(query, role="financial_reports_embedding_specialist")
+    return {"result": result, "tools_called": tools_called}
 
 
 if __name__ == "__main__":

@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Pipeline orchestrator (`backend/pipeline.py`) with Retriever → Strategist 2-agent pipeline
+- Retriever agent with SEC filing tools and deterministic fallback for tool-call failures
+- Strategist agent as direct LLM call for evidence synthesis
+- `RETRIEVER_TOOLS` list in `backend/tools/tools.py`
+- `EvidencePackage` dataclass for structured evidence passing between pipeline stages
+- Per-stage logging with timestamps in pipeline orchestrator
 - Temporal Precision scoring dimension (1–5) to evaluation rubric with per-question date-stamped ground truth facts
 - Relational Recall scoring dimension (1–5) to evaluation rubric with per-question cross-sector causal chain annotations
 - `graph` evaluation stage between `news_agent` and `critic` to isolate LazyGraphRAG contribution
@@ -17,6 +23,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Gate criteria for each phase transition documented in all three docs
 
 ### Changed
+- `/api/agent` now routes through pipeline for default `financial_advisor` role
+- Extracted `extract_tools_called()` helper from `run_agent()` for reuse in pipeline
 - `run_agent()` now returns `(response, tools_called)` tuple instead of just `response`
 - `/api/agent` and `/api/report-agent` endpoints now include `tools_called` in response JSON
 - LLM judge prompt expanded from 3 to 5 scoring dimensions with temporal facts and relational connections as additional context

@@ -11,7 +11,6 @@ from langchain.tools import tool
 from openai import OpenAI
 from supabase import Client, create_client
 
-
 load_dotenv()
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ def _parse_embedding(embedding_value: Any) -> list[float] | None:
 
 
 def _cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
-    dot_product = sum(a * b for a, b in zip(vector_a, vector_b))
+    dot_product = sum(a * b for a, b in zip(vector_a, vector_b, strict=False))
     norm_a = math.sqrt(sum(a * a for a in vector_a))
     norm_b = math.sqrt(sum(b * b for b in vector_b))
     if not norm_a or not norm_b:
@@ -132,9 +131,11 @@ def retrieve_embedded_financial_report_info(
     query_embedding = _embed_query(query)
     selected_title = file_title or filename
 
-    documents_query = supabase.table("document_tree_nodes").select(
-        "id, parent_id, node_type, file_title, title, text, depth, metadata, embedding"
-    ).eq("node_type", "document")
+    documents_query = (
+        supabase.table("document_tree_nodes")
+        .select("id, parent_id, node_type, file_title, title, text, depth, metadata, embedding")
+        .eq("node_type", "document")
+    )
     if selected_title:
         documents_query = documents_query.eq("file_title", selected_title)
     document_nodes = documents_query.execute().data or []
@@ -174,9 +175,12 @@ def retrieve_embedded_financial_report_info(
         logger.warning("Traversal returned no nodes. start_node_id=%s", best_document["id"])
         return {"error": "Traversal returned no nodes for the selected document."}
 
-    all_nodes_result = supabase.table("document_tree_nodes").select(
-        "id, parent_id, node_type, file_title, title, text, depth, metadata, embedding"
-    ).eq("file_title", selected_file_title).execute()
+    all_nodes_result = (
+        supabase.table("document_tree_nodes")
+        .select("id, parent_id, node_type, file_title, title, text, depth, metadata, embedding")
+        .eq("file_title", selected_file_title)
+        .execute()
+    )
     all_nodes = all_nodes_result.data or []
     if not all_nodes:
         logger.warning("No nodes found for selected file_title=%s", selected_file_title)

@@ -9,7 +9,7 @@ Transform the monolithic single-agent advisor into a 3-agent sequential pipeline
 | Phase | Stage | Status | Eval Score (avg) | Gate Met |
 |-------|-------|--------|------------------|----------|
 | 0 | `baseline` | **Done** | 1.0 | Yes |
-| 1 | `rag_reports` | Not started | — | — |
+| 1 | `rag_reports` | **Implemented** | — | — |
 | 2 | `news_agent` | Not started | — | — |
 | 3 | `graph` | Not started | — | — |
 | 4 | `critic` | Not started | — | — |
@@ -99,7 +99,7 @@ Agent failed to use its available tools across all 4 questions. Instead of query
 
 ## Phase 1: `rag_reports` — Retriever + Strategist with SEC filings
 
-**Status: Not started**
+**Status: Implemented**
 
 **Goal**: Replace the flat advisor with a 2-agent pipeline. The Retriever gathers SEC filing evidence using tools. The Strategist synthesizes it into a recommendation. No Critic yet.
 
