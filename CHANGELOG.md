@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Baseline evaluation runner with LLM-as-judge scoring (`script/run_eval.py`)
 - March 24–31, 2026 market analysis with ground truth answers (`internal/march_24_31_analysis.md`)
 - Evaluation methodology documentation (`internal/evaluation_methodology.md`, `docs/09-EVALUATION.md`)
+- News corpus documentation (`docs/10-NEWS-CORPUS.md`)
 - Supabase credentials added to backend `.env.example`
 
 - Embedded fallback portfolio data for instant first paint (`frontend/src/fallbackHoldings.js`)
