@@ -159,40 +159,57 @@ def run_strategist(query: str, evidence: EvidencePackage) -> str:
     return result.content
 
 
+def _fmt_debug(trace: list[str], elapsed: float) -> str:
+    """Format debug trace as a markdown block appended to the response."""
+    lines = "\n".join(f"- {t}" for t in trace)
+    return f"\n\n---\n**Pipeline debug** ({elapsed:.1f}s)\n{lines}"
+
+
 def run_pipeline(query: str) -> dict:
     logger.info("Pipeline starting. query=%s", query)
     start = time.time()
+    trace: list[str] = ["v:d4b474b-debug"]
 
     try:
         context = build_portfolio_context()
+        trace.append(f"portfolio_context: {len(context)} chars")
         logger.info("Portfolio context built. length=%d", len(context))
 
         evidence = run_retriever(query, context)
+        trace.append(f"retriever: tools={evidence.tools_called}, evidence={len(evidence.evidence_text)} chars")
         logger.info("Retriever complete. tools_called=%s", evidence.tools_called)
 
         result = run_strategist(query, evidence)
-
         elapsed = time.time() - start
-        logger.info(
-            "Pipeline complete. elapsed=%.1fs tools=%s",
-            elapsed,
-            evidence.tools_called,
-        )
+        trace.append(f"strategist: {len(result)} chars")
+        logger.info("Pipeline complete. elapsed=%.1fs tools=%s", elapsed, evidence.tools_called)
 
+        result += _fmt_debug(trace, elapsed)
         return {"result": result, "tools_called": evidence.tools_called}
-    except Exception:
+    except Exception as exc:
+        trace.append(f"pipeline_error: {type(exc).__name__}: {exc}")
         logger.exception("Pipeline failed, running deterministic fallback.")
         try:
             evidence_text, tools_called = _run_fallback(query)
+            trace.append(f"fallback: tools={tools_called}, evidence={len(evidence_text)} chars")
             if not evidence_text:
-                return {"result": "Service temporarily unavailable.", "tools_called": []}
+                elapsed = time.time() - start
+                trace.append("fallback produced no evidence")
+                msg = "Service temporarily unavailable." + _fmt_debug(trace, elapsed)
+                return {"result": msg, "tools_called": []}
             fallback_result = model.invoke(
                 [
                     SystemMessage(content=STRATEGIST_SYSTEM_PROMPT),
                     HumanMessage(content=f"QUESTION: {query}\n\nEVIDENCE PACKAGE:\n{evidence_text}"),
                 ]
             )
-            return {"result": fallback_result.content, "tools_called": tools_called}
-        except Exception:
+            elapsed = time.time() - start
+            trace.append(f"fallback_strategist: {len(fallback_result.content)} chars")
+            result = fallback_result.content + _fmt_debug(trace, elapsed)
+            return {"result": result, "tools_called": tools_called}
+        except Exception as exc2:
+            trace.append(f"fallback_error: {type(exc2).__name__}: {exc2}")
+            elapsed = time.time() - start
             logger.exception("Deterministic fallback also failed")
-            return {"result": "Service temporarily unavailable.", "tools_called": []}
+            msg = "Service temporarily unavailable." + _fmt_debug(trace, elapsed)
+            return {"result": msg, "tools_called": []}

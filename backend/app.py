@@ -24,9 +24,12 @@ def hello():
     return {"message": "Hello, World!"}
 
 
+BUILD_VERSION = "d4b474b-debug"
+
+
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "backend"}
+    return {"status": "ok", "service": "backend", "version": BUILD_VERSION}
 
 
 @app.get("/api/portfolio")
