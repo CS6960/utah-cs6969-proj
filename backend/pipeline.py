@@ -59,41 +59,58 @@ def _truncate_at_newline(text: str, limit: int) -> str:
     return truncated
 
 
+def _run_fallback(query: str) -> tuple[str, list[str]]:
+    """Call retriever tools directly when the agent fails or calls no tools."""
+    logger.info("Running deterministic fallback.")
+    fallback_parts: list[str] = []
+    tools_called: list[str] = []
+
+    price_outputs: list[str] = []
+    for ticker in _PORTFOLIO_TICKERS:
+        try:
+            price_outputs.append(get_stock_price.invoke({"ticker": ticker}))
+        except Exception:
+            logger.warning("Fallback get_stock_price failed for %s", ticker)
+    if price_outputs:
+        fallback_parts.append("PRICE DATA:\n" + "\n".join(price_outputs))
+        tools_called.append("get_stock_price")
+
+    try:
+        reports_output = list_available_financial_reports.invoke({})
+        fallback_parts.append(f"AVAILABLE REPORTS:\n{reports_output}")
+        tools_called.append("list_available_financial_reports")
+    except Exception:
+        logger.warning("Fallback list_available_financial_reports failed.")
+
+    try:
+        excerpts_output = retrieve_embedded_financial_report_info.invoke({"query": query})
+        fallback_parts.append(f"FILING EXCERPTS:\n{excerpts_output}")
+        tools_called.append("retrieve_embedded_financial_report_info")
+    except Exception:
+        logger.warning("Fallback retrieve_embedded_financial_report_info failed.")
+
+    evidence_text = "\n\n".join(fallback_parts)
+    logger.info("Deterministic fallback complete. tools_called=%s", tools_called)
+    return evidence_text, tools_called
+
+
 def run_retriever(query: str, portfolio_context: str) -> EvidencePackage:
     logger.info("Retriever starting. query_preview=%s", query[:80])
     start = time.time()
 
-    human_content = f"Portfolio:\n{portfolio_context}\n\nQuestion: {query}"
-    result = retriever_agent.invoke({"messages": [HumanMessage(content=human_content)]})
+    tools_called: list[str] = []
+    evidence_text = ""
 
-    tools_called = extract_tools_called(result["messages"])
-    evidence_text = result["messages"][-1].content
+    human_content = f"Portfolio:\n{portfolio_context}\n\nQuestion: {query}"
+    try:
+        result = retriever_agent.invoke({"messages": [HumanMessage(content=human_content)]})
+        tools_called = extract_tools_called(result["messages"])
+        evidence_text = result["messages"][-1].content
+    except Exception:
+        logger.exception("Retriever agent failed — will run deterministic fallback.")
 
     if not tools_called:
-        logger.warning("Retriever called no tools — running deterministic fallback.")
-        fallback_parts: list[str] = []
-
-        price_outputs: list[str] = []
-        for ticker in _PORTFOLIO_TICKERS:
-            try:
-                price_outputs.append(get_stock_price.invoke({"ticker": ticker}))
-            except Exception:
-                logger.warning("Fallback get_stock_price failed for %s", ticker)
-        fallback_parts.append("PRICE DATA:\n" + "\n".join(price_outputs))
-
-        reports_output = list_available_financial_reports.invoke({})
-        fallback_parts.append(f"AVAILABLE REPORTS:\n{reports_output}")
-
-        excerpts_output = retrieve_embedded_financial_report_info.invoke({"query": query})
-        fallback_parts.append(f"FILING EXCERPTS:\n{excerpts_output}")
-
-        evidence_text = "\n\n".join(fallback_parts)
-        tools_called = [
-            "get_stock_price",
-            "list_available_financial_reports",
-            "retrieve_embedded_financial_report_info",
-        ]
-        logger.info("Deterministic fallback complete. tools_called=%s", tools_called)
+        evidence_text, tools_called = _run_fallback(query)
 
     evidence_text = _truncate_at_newline(evidence_text, 4000)
 
