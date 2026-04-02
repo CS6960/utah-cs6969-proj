@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Phase 1 data requirements in pipeline plan: historical prices (March 24–31) and 4 missing 10-K filings (AMZN, GOOGL, LLY, XOM)
 - Pipeline orchestrator (`backend/pipeline.py`) with Retriever → Strategist 2-agent pipeline
 - Retriever agent with SEC filing tools and deterministic fallback for tool-call failures
 - Strategist agent as direct LLM call for evidence synthesis
