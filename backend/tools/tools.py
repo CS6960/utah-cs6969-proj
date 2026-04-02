@@ -4,7 +4,7 @@ from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
 from langchain_core.tools import tool
 
-from portfolio import get_price_snapshot
+from portfolio import get_live_portfolio, get_price_snapshot
 from tools.financial_reports_tools import list_available_financial_reports, retrieve_embedded_financial_report_info
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,31 @@ def get_stock_price(ticker: str) -> str:
         return f"Error fetching price for {ticker}: {e!s}"
 
 
+@tool
+def get_portfolio_holdings() -> str:
+    """
+    Return the current portfolio holdings with prices, share counts, and thesis.
+    Call this first to understand what the user owns before analyzing risk,
+    diversification, or making recommendations.
+    """
+    try:
+        logger.info("get_portfolio_holdings called.")
+        holdings = get_live_portfolio()
+        lines = []
+        for h in holdings:
+            day_pct = h.get("dayChangePct")
+            change_str = f"{day_pct:+.2f}%" if day_pct is not None else "N/A"
+            lines.append(
+                f"{h['symbol']} ({h['name']}): {h['shares']} shares @ ${h['price']:.2f} "
+                f"(avg cost ${h['avgCost']:.2f}, day {change_str}) — {h['thesis']}"
+            )
+        logger.info("get_portfolio_holdings success. holdings=%d", len(holdings))
+        return "PORTFOLIO HOLDINGS:\n" + "\n".join(lines)
+    except Exception as e:
+        logger.exception("get_portfolio_holdings failed. error=%s", e)
+        return f"Error fetching portfolio: {e!s}"
+
+
 ADVISOR_TOOLS = [
     DuckDuckGoSearchResults(),
     YahooFinanceNewsTool(),
@@ -48,6 +73,7 @@ REPORT_TOOLS = [
 ]
 
 RETRIEVER_TOOLS = [
+    get_portfolio_holdings,
     get_stock_price,
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,

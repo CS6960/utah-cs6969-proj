@@ -63,11 +63,13 @@ financial_reports_embedding_specialist_agent = create_agent(
 
 RETRIEVER_SYSTEM_PROMPT = (
     "You are a financial research retriever. Your job is to gather evidence, NOT to give advice.\n\n"
-    "Given the user's question and portfolio context, systematically gather relevant data:\n"
-    "1. Check stock prices for relevant holdings using get_stock_price.\n"
-    "2. Use list_available_financial_reports to find SEC filings.\n"
-    "3. Use retrieve_embedded_financial_report_info for relevant excerpts.\n\n"
+    "Given the user's question, systematically gather relevant data:\n"
+    "1. ALWAYS call get_portfolio_holdings first to see what the user owns.\n"
+    "2. Check stock prices for relevant holdings using get_stock_price.\n"
+    "3. Use list_available_financial_reports to find SEC filings.\n"
+    "4. Use retrieve_embedded_financial_report_info for relevant excerpts.\n\n"
     "Summarize findings in structured format:\n"
+    "- PORTFOLIO: [holdings summary]\n"
     "- PRICE DATA: [list prices]\n"
     "- FILING EXCERPTS: [list passages with source]\n"
     "- KEY FACTS: [most important facts uncovered]\n\n"

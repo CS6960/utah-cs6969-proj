@@ -17,7 +17,7 @@ from tools.financial_reports_tools import (
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,
 )
-from tools.tools import get_stock_price
+from tools.tools import get_portfolio_holdings, get_stock_price
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,13 @@ def _run_fallback(query: str) -> tuple[str, list[str]]:
     logger.info("Running deterministic fallback.")
     fallback_parts: list[str] = []
     tools_called: list[str] = []
+
+    try:
+        portfolio_output = get_portfolio_holdings.invoke({})
+        fallback_parts.append(portfolio_output)
+        tools_called.append("get_portfolio_holdings")
+    except Exception:
+        logger.warning("Fallback get_portfolio_holdings failed.")
 
     price_outputs: list[str] = []
     for ticker in _PORTFOLIO_TICKERS:
