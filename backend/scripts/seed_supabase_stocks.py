@@ -30,7 +30,7 @@ def get_supabase_client() -> Client:
     if not supabase_url or not supabase_key:
         raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in the environment.")
 
-    return create_client(supabase_url, supabase_key)
+    return create_client(supabase_url, supabase_key)  # noqa: SB004
 
 
 def load_price_rows_from_csv(csv_path: Path) -> list[dict[str, object]]:

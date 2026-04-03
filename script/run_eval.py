@@ -241,7 +241,7 @@ Respond with ONLY a JSON object, no other text:
 
 
 def get_supabase():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    return create_client(SUPABASE_URL, SUPABASE_KEY)  # noqa: SB004
 
 
 def query_agent(question: str) -> tuple[str, list[str]]:
@@ -366,7 +366,7 @@ def run_eval(stage: str, do_score: bool = False):
             )
 
         # Insert each result immediately to avoid batch insert timeouts on free-tier Supabase
-        sb.table("eval_runs").insert(row).execute()
+        sb.table("eval_runs").insert(row).execute()  # noqa: SB003
         logger.info("  Stored result for '%s'.", question[:40])
         results.append(row)
 
@@ -377,7 +377,11 @@ def run_eval(stage: str, do_score: bool = False):
 def print_report():
     """Print a comparison table across all evaluation stages."""
     sb = get_supabase()
-    rows = sb.table("eval_runs").select("*").order("created_at").execute().data or []
+    rows = sb.table("eval_runs").select(  # noqa: SB001, SB006
+        "stage,question,response,tools_called,groundedness,completeness,"
+        "actionability,temporal_precision,relational_recall,noise_citations,"
+        "noise_citation_count,notes,created_at"
+    ).order("created_at").execute().data or []
 
     if not rows:
         logger.info("No evaluation runs found.")

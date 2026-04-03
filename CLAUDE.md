@@ -18,7 +18,19 @@ All changes must be logged in `CHANGELOG.md` at the project root. Follow [Keep a
 
 - **Frontend:** `cd frontend && npm run lint` (ESLint with React plugins)
 - **Backend:** `cd backend && ruff check . && ruff format --check .` (Ruff linter + formatter)
-- Run both before committing.
+- **Supabase:** `python scripts/check_supabase_rules.py` (free-tier query safety)
+- Run all before committing. The Supabase linter also runs as a git pre-commit hook.
+
+## Supabase Free-Tier Constraints
+
+This project runs on Supabase Free (Nano) tier. See `docs/08-SUPABASE-FREE-TIER.md` for full rules. Key constraints:
+
+- **3-second statement timeout** (anon role) — all queries must use `.limit()` and filters
+- **Never select `embedding` column** — use `match_document_tree_nodes` RPC for similarity search
+- **No queries inside loops** — fetch all data before iterating, or use `.in_()`
+- **Module-level Supabase clients** — don't call `create_client()` inside functions
+- **Batch inserts ≤ 50 rows** — especially for tables with embeddings
+- **Never `.select("*")`** — always list specific columns
 
 ## TODO
 No test runner is configured yet.

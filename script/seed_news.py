@@ -45,7 +45,7 @@ EVAL_WINDOW_END = datetime(2026, 3, 31, 23, 59, 59, tzinfo=timezone.utc)
 def get_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ValueError("SUPABASE_URL or SUPABASE_KEY not set in .env")
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    return create_client(SUPABASE_URL, SUPABASE_KEY)  # noqa: SB004
 
 
 def fetch_news_yfinance(ticker: str) -> list[dict]:
