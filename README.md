@@ -6,7 +6,7 @@ An equity portfolio management dashboard for a ~$1M portfolio across 200–300 p
 
 ```
 /frontend          - React + Vite single-page application
-/backend           - Flask REST API
+/backend           - FastAPI backend service
 /infra             - Infrastructure and deployment configuration
 /docs              - Project specifications and documentation
 ```
@@ -31,14 +31,14 @@ Deployed to GitHub Pages: https://haotsai101.github.io/utah-cs6969-proj/
 
 ## Backend
 
-A Flask REST API for portfolio data and calculations.
+A FastAPI backend for portfolio data, agent endpoints, and related calculations.
 
 ### Setup & Commands
 
 ```bash
 cd backend
 pip install -r requirements.txt
-python app.py     # Run dev server on http://localhost:5000
+python app.py     # Run dev server on http://localhost:8000
 ```
 
 ### Endpoints

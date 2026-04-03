@@ -285,7 +285,7 @@ The noise ratio starts at ~5 articles and can be increased in later stages to st
    - `backend/migrations/002_eval_schema_update.sql`
 2. Seed news articles: `python script/seed_news.py`
 3. Seed noise articles: `python script/seed_news.py --noise`
-4. Start the backend: `cd backend && python app.py`
+4. Start the FastAPI backend: `cd backend && python app.py` on `http://localhost:8000`
 
 ### Record a Stage
 

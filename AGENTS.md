@@ -14,7 +14,7 @@ npm run build
 npm run preview
 ```
 
-### Backend (Flask)
+### Backend (FastAPI)
 
 ```bash
 cd backend
@@ -33,7 +33,7 @@ git push origin main
 ## Directory Structure
 
 - **frontend/** – React app, Vite config, styling, components
-- **backend/** – Flask routes, business logic, tests
+- **backend/** – FastAPI routes, business logic, tests
 - **infra/** – Docker, deployment configs, CI/CD
 - **docs/** – API specs, module specifications, domain documentation
 - **.github/workflows/** – GitHub Actions:
@@ -49,7 +49,7 @@ git push origin main
 - No external CSS frameworks (keep it minimal)
 
 **Backend (Python):**
-- Use Flask blueprints for modular routes
+- Use FastAPI route modules and keep request handlers focused
 - Follow PEP 8 style guide
 - Add type hints where possible
 - Write tests alongside features
@@ -63,7 +63,7 @@ git push origin main
 
 ### Add a Backend Endpoint
 1. Add route to `backend/app.py`
-2. Test locally: `cd backend && python app.py`
+2. Test locally: `cd backend && python app.py` and use `http://localhost:8000`
 3. Commit and push — GitHub Actions tests on multiple Python versions
 
 ### Update Dependencies
