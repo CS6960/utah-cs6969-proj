@@ -18,7 +18,7 @@ All changes must be logged in `CHANGELOG.md` at the project root. Follow [Keep a
 
 - **Frontend:** `cd frontend && npm run lint` (ESLint with React plugins)
 - **Backend:** `cd backend && ruff check . && ruff format --check .` (Ruff linter + formatter)
-- **Supabase:** `python scripts/check_supabase_rules.py` (free-tier query safety)
+- **Supabase:** `python script/check_supabase_rules.py` (free-tier query safety)
 - Run all before committing. The Supabase linter also runs as a git pre-commit hook.
 
 ## Supabase Free-Tier Constraints

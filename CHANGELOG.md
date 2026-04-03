@@ -7,7 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - Supabase free-tier coding rules documentation (`docs/08-SUPABASE-FREE-TIER.md`)
-- Pre-commit linter (`scripts/check_supabase_rules.py`) enforcing 6 Supabase query safety rules (SB001–SB006)
+- Pre-commit linter (`script/check_supabase_rules.py`) enforcing 6 Supabase query safety rules (SB001–SB006)
 - Git pre-commit hook wired to lint staged Python files against Supabase rules
 - Supabase constraints summary in CLAUDE.md for AI-assisted development
 - Phase 1 data requirements in pipeline plan: historical prices (March 24–31) and 4 missing 10-K filings (AMZN, GOOGL, LLY, XOM)
