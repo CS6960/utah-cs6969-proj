@@ -20,6 +20,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from time import time
 
 import requests
 from dotenv import load_dotenv
@@ -369,6 +370,8 @@ def run_eval(stage: str, do_score: bool = False):
         sb.table("eval_runs").insert(row).execute()  # noqa: SB003
         logger.info("  Stored result for '%s'.", question[:40])
         results.append(row)
+        # sleep for 5 seconds between questions to avoid overwhelming the backend or hitting rate limits
+        time.sleep(5)  # brief pause to avoid overwhelming the backend
 
     logger.info("Stored %d eval results for stage '%s'.", len(results), stage)
     return results
