@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from agents import run_agent
 from pipeline import run_pipeline
 from portfolio import get_live_holding, get_live_portfolio
+from stock_prices import get_latest_close_price, get_latest_close_prices
 
 app = FastAPI()
 
@@ -44,6 +45,24 @@ def portfolio():
 def portfolio_holding(symbol: str):
     try:
         return get_live_holding(symbol)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol.upper()}") from error
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/stock-prices/latest")
+def latest_stock_prices():
+    try:
+        return get_latest_close_prices()
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/stock-prices/latest/{symbol}")
+def latest_stock_price(symbol: str):
+    try:
+        return get_latest_close_price(symbol)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol.upper()}") from error
     except ValueError as error:
