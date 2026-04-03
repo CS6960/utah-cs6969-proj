@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import fallbackHoldings, { FALLBACK_GENERATED_AT } from "./fallbackHoldings";
+import { useEffect, useMemo, useState } from "react";
 
 const theme = {
   bg: "#f4efe7",
@@ -76,13 +75,6 @@ const portfolioSeedMessages = [
     text: "Your portfolio looks tilted toward large-cap quality and AI-linked growth. The main portfolio-level questions are concentration, sector balance, and whether each holding still earns its weight.",
   },
 ];
-
-const defaultHoldingFields = {
-  thesis: "Awaiting thesis notes from the uploaded portfolio.",
-  catalyst: "Awaiting catalyst notes from the uploaded portfolio.",
-  risk: "Awaiting risk notes from the uploaded portfolio.",
-  notes: ["Imported from CSV"],
-};
 
 function money(value) {
   return value.toLocaleString("en-US", {
@@ -210,22 +202,18 @@ function buildReply(holding, prompt) {
   const text = prompt.toLowerCase();
 
   if (text.includes("buy") || text.includes("add")) {
-    return `If you add ${holding.symbol}, I would treat it as an incremental thesis check. Compare current price ${money(holding.price)} against your average cost ${money(holding.avgCost)} and decide whether you are averaging up because conviction improved, not because momentum feels good.`;
+    return `If you add ${holding.symbol}, compare current price ${money(holding.price)} against your average cost ${money(holding.avgCost)} and decide whether you are increasing exposure because position sizing still makes sense.`;
   }
 
   if (text.includes("sell") || text.includes("trim")) {
-    return `For ${holding.symbol}, trim logic should be driven by sizing or thesis drift. If the thesis still holds, a partial trim is cleaner than a full exit when concentration is the main issue.`;
+    return `For ${holding.symbol}, trim logic should be driven by sizing discipline and concentration. A partial trim is often cleaner than a full exit when the main issue is position size.`;
   }
 
   if (text.includes("risk")) {
-    return `The main risk for ${holding.symbol} is: ${holding.risk} I would also ask whether this position is correlated with your other holdings and whether that hidden concentration is acceptable.`;
+    return `For ${holding.symbol}, the main question is how much portfolio risk it adds and whether it overlaps too heavily with your other positions.`;
   }
 
-  if (text.includes("thesis") || text.includes("why")) {
-    return `Your current thesis reads: ${holding.thesis} The adviser angle is to define one measurable condition that would prove this thesis wrong within the next 2 quarters.`;
-  }
-
-  return `For ${holding.symbol}, I would frame the next decision around three points: thesis durability, valuation versus expected growth, and target position size in the full portfolio.`;
+  return `For ${holding.symbol}, I would frame the next decision around valuation versus expected growth, position size, and portfolio fit.`;
 }
 
 function buildPortfolioReply(prompt, stats) {
@@ -250,93 +238,152 @@ function buildPortfolioReply(prompt, stats) {
   return "At the overall portfolio level, I would focus on three questions: where you are overexposed, which holdings deserve additional capital, and what would break the portfolio thesis over the next year.";
 }
 
-function parseCsvLine(line) {
-  const cells = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      cells.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-
-  cells.push(current.trim());
-  return cells;
+function LoadingBar() {
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        width: "min(420px, 100%)",
+        height: 10,
+        borderRadius: 999,
+        overflow: "hidden",
+        background: "rgba(15, 118, 110, 0.12)",
+        border: "1px solid rgba(15, 118, 110, 0.18)",
+      }}
+    >
+      <div
+        style={{
+          width: "42%",
+          height: "100%",
+          borderRadius: 999,
+          background: "linear-gradient(90deg, #0f766e 0%, #57c5b6 58%, #d8f3ef 100%)",
+          animation: "portfolioLoadBar 1.2s ease-in-out infinite",
+        }}
+      />
+    </div>
+  );
 }
 
-function parsePortfolioCsv(text) {
-  const rows = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (rows.length < 2) {
-    throw new Error("CSV must include a header row and at least one holding.");
-  }
-
-  const headers = parseCsvLine(rows[0]).map((header) =>
-    header.toLowerCase().replace(/[\s_-]+/g, ""),
+function LoadingHoldingCard() {
+  return (
+    <div
+      style={{
+        border: `1px solid ${theme.line}`,
+        borderRadius: 24,
+        padding: 18,
+        background: "#fffdf8",
+        boxShadow: "0 12px 32px rgba(24, 34, 47, 0.08)",
+        display: "grid",
+        gridTemplateColumns:
+          "minmax(0, 1.1fr) minmax(110px, 0.55fr) repeat(3, minmax(90px, 0.55fr)) minmax(0, 1.5fr)",
+        gap: 16,
+        alignItems: "center",
+      }}
+    >
+      <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ width: 84, height: 14, borderRadius: 999, background: "#efe5d8" }} />
+        <div style={{ width: 112, height: 34, borderRadius: 14, background: "#e4d7c4" }} />
+      </div>
+      <div style={{ width: 88, height: 42, borderRadius: 16, background: "#efe5d8" }} />
+      <div style={{ width: 116, height: 42, borderRadius: 16, background: "#efe5d8" }} />
+      <div style={{ width: 72, height: 42, borderRadius: 16, background: "#efe5d8" }} />
+      <div style={{ width: 92, height: 42, borderRadius: 16, background: "#efe5d8" }} />
+      <div style={{ width: "100%", height: 52, borderRadius: 16, background: "#f3ebdf" }} />
+    </div>
   );
-  const required = ["symbol", "shares", "price", "avgcost"];
+}
 
-  for (const field of required) {
-    if (!headers.includes(field)) {
-      throw new Error(`CSV is missing required column: ${field}`);
-    }
-  }
+function OverviewMetric({ label, value, tone = "default" }) {
+  const stylesByTone = {
+    default: {
+      background: "#fffdf8",
+      border: `1px solid ${theme.line}`,
+      valueColor: theme.ink,
+      labelColor: theme.muted,
+    },
+    accent: {
+      background: "#dff7f1",
+      border: "1px solid rgba(15, 118, 110, 0.15)",
+      valueColor: theme.accent,
+      labelColor: "#42766f",
+    },
+    gold: {
+      background: "#fff1d9",
+      border: "1px solid rgba(183, 121, 31, 0.16)",
+      valueColor: theme.gold,
+      labelColor: "#8e6a2e",
+    },
+    rose: {
+      background: "#fde6ea",
+      border: "1px solid rgba(185, 75, 94, 0.12)",
+      valueColor: theme.rose,
+      labelColor: "#9a5a68",
+    },
+  };
 
-  const parsedHoldings = rows.slice(1).map((row, index) => {
-    const cells = parseCsvLine(row);
-    const record = Object.fromEntries(headers.map((header, headerIndex) => [header, cells[headerIndex] ?? ""]));
-    const symbol = record.symbol.toUpperCase();
-    const shares = Number(record.shares);
-    const price = Number(record.price);
-    const avgCost = Number(record.avgcost);
+  const styles = stylesByTone[tone] ?? stylesByTone.default;
 
-    if (!symbol || Number.isNaN(shares) || Number.isNaN(price) || Number.isNaN(avgCost)) {
-      throw new Error(`Row ${index + 2} has invalid symbol, shares, price, or avgCost values.`);
-    }
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        borderRadius: 18,
+        background: styles.background,
+        border: styles.border,
+        minWidth: 120,
+      }}
+    >
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: styles.labelColor }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700, lineHeight: 1, color: styles.valueColor }}>
+        {value}
+      </div>
+    </div>
+  );
+}
 
-    return {
-      symbol,
-      name: record.name || symbol,
-      shares,
-      price,
-      avgCost,
-      thesis: record.thesis || defaultHoldingFields.thesis,
-      catalyst: record.catalyst || defaultHoldingFields.catalyst,
-      risk: record.risk || defaultHoldingFields.risk,
-      notes: record.notes
-        ? record.notes.split("|").map((note) => note.trim()).filter(Boolean)
-        : defaultHoldingFields.notes,
-    };
-  });
+function MarketStat({ label, value }) {
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        borderRadius: 18,
+        background: "rgba(255, 253, 248, 0.9)",
+        border: `1px solid ${theme.line}`,
+      }}
+    >
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: theme.muted }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700, lineHeight: 1.05 }}>{value}</div>
+    </div>
+  );
+}
 
-  if (!parsedHoldings.length) {
-    throw new Error("CSV did not produce any holdings.");
-  }
-
-  return parsedHoldings;
+function HoldingDataCell({ label, value, valueColor, align = "left" }) {
+  return (
+    <div style={{ textAlign: align }}>
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: theme.muted,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: valueColor || theme.ink }}>{value}</div>
+    </div>
+  );
 }
 
 function App() {
-  const fileInputRef = useRef(null);
-  const [holdings, setHoldings] = useState(fallbackHoldings);
-  const [lastPriceUpdate, setLastPriceUpdate] = useState(FALLBACK_GENERATED_AT);
+  const [holdings, setHoldings] = useState([]);
+  const [cashBalances, setCashBalances] = useState([]);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState("");
   const [view, setView] = useState("portfolio");
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [draft, setDraft] = useState("");
@@ -350,8 +397,6 @@ function App() {
   const [isHoldingChatExpanded, setIsHoldingChatExpanded] = useState(false);
   const [messagesBySymbol, setMessagesBySymbol] = useState(seedMessages);
   const [portfolioMessages, setPortfolioMessages] = useState(portfolioSeedMessages);
-  const [uploadMessage, setUploadMessage] = useState("");
-  const [dataSource, setDataSource] = useState("api");
 
   const chatApiBase = useMemo(() => {
     const envBase = import.meta.env.VITE_API_BASE;
@@ -374,24 +419,30 @@ function App() {
   );
 
   const portfolioStats = useMemo(() => {
-    const value = holdings.reduce((sum, holding) => sum + holding.shares * holding.price, 0);
+    const equitiesValue = holdings.reduce((sum, holding) => sum + holding.shares * holding.price, 0);
     const cost = holdings.reduce((sum, holding) => sum + holding.shares * holding.avgCost, 0);
+    const cash = cashBalances.reduce((sum, balance) => sum + balance.cashBalance, 0);
     const largestHolding = holdings.reduce(
       (largest, holding) =>
         !largest || holding.shares * holding.price > largest.shares * largest.price ? holding : largest,
       null,
     );
-    const pnl = value - cost;
+    const value = equitiesValue + cash;
+    const pnl = value - cost - cash;
     return {
       value,
+      equitiesValue,
+      cash,
       pnl,
       pnlPct: cost ? (pnl / cost) * 100 : 0,
       cost,
       largestHolding,
     };
-  }, [holdings]);
+  }, [cashBalances, holdings]);
 
   const currentMessages = selectedHolding ? messagesBySymbol[selectedHolding.symbol] ?? [] : [];
+  const equitySharePct = portfolioStats.value > 0 ? (portfolioStats.equitiesValue / portfolioStats.value) * 100 : 0;
+  const cashSharePct = portfolioStats.value > 0 ? (portfolioStats.cash / portfolioStats.value) * 100 : 0;
 
   useEffect(() => {
     if (!holdings.length) {
@@ -405,12 +456,6 @@ function App() {
   }, [holdings, selectedSymbol]);
 
   useEffect(() => {
-    if (dataSource !== "api") {
-      setIsPortfolioLoading(false);
-      setPortfolioError("");
-      return undefined;
-    }
-
     let isDisposed = false;
 
     async function loadPortfolio() {
@@ -418,14 +463,15 @@ function App() {
       setIsPortfolioLoading(true);
 
       try {
-        const response = await fetch(`${chatApiBase}/api/portfolio`);
+        const portfolioResponse = await fetch(`${chatApiBase}/api/portfolio`);
 
-        if (!response.ok) {
-          throw new Error(`Portfolio request failed with ${response.status}`);
+        if (!portfolioResponse.ok) {
+          throw new Error(`Portfolio request failed with ${portfolioResponse.status}`);
         }
 
-        const data = await response.json();
-        const nextHoldings = Array.isArray(data?.holdings) ? data.holdings : [];
+        const portfolioData = await portfolioResponse.json();
+        const nextHoldings = Array.isArray(portfolioData?.holdings) ? portfolioData.holdings : [];
+        const nextCashBalances = Array.isArray(portfolioData?.cashBalances) ? portfolioData.cashBalances : [];
 
         if (!nextHoldings.length) {
           throw new Error("Portfolio API returned no holdings.");
@@ -433,7 +479,12 @@ function App() {
 
         if (!isDisposed) {
           setHoldings(nextHoldings);
-          setLastPriceUpdate(new Date().toISOString());
+          setCashBalances(nextCashBalances);
+          setLastPriceUpdate(
+            typeof portfolioData?.latestTradingDate === "string"
+              ? `${portfolioData.latestTradingDate}T00:00:00Z`
+              : new Date().toISOString(),
+          );
         }
       } catch (error) {
         if (!isDisposed) {
@@ -453,38 +504,33 @@ function App() {
       isDisposed = true;
       window.clearInterval(intervalId);
     };
-  }, [chatApiBase, dataSource]);
-
-  useEffect(() => {
-    if (!uploadMessage) {
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setUploadMessage("");
-    }, 2600);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [uploadMessage]);
+  }, [chatApiBase]);
 
   async function openHolding(symbol) {
     setSelectedSymbol(symbol);
     setView("holding");
 
-    if (dataSource !== "api") {
-      return;
-    }
-
     try {
-      const response = await fetch(`${chatApiBase}/api/portfolio/${symbol}`);
+      const response = await fetch(`${chatApiBase}/api/stock-prices/latest/${symbol}`);
 
       if (!response.ok) {
         throw new Error(`Holding request failed with ${response.status}`);
       }
 
-      const latestHolding = await response.json();
+      const latestHoldingPrice = await response.json();
       setHoldings((current) =>
-        current.map((holding) => (holding.symbol === symbol ? { ...holding, ...latestHolding } : holding)),
+        current.map((holding) =>
+          holding.symbol === symbol
+            ? {
+                ...holding,
+                price: typeof latestHoldingPrice.price === "number" ? latestHoldingPrice.price : holding.price,
+                currency: latestHoldingPrice.currency || holding.currency || "USD",
+                tradingDate: latestHoldingPrice.tradingDate || holding.tradingDate,
+                dayChange: null,
+                dayChangePct: null,
+              }
+            : holding,
+        ),
       );
     } catch (error) {
       setPortfolioError(error instanceof Error ? error.message : "Unable to refresh the selected holding.");
@@ -583,51 +629,6 @@ function App() {
     }
   }
 
-  function handlePortfolioUpload(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      try {
-        const parsedHoldings = parsePortfolioCsv(String(reader.result ?? ""));
-        const nextMessages = Object.fromEntries(
-          parsedHoldings.map((holding) => [
-            holding.symbol,
-            messagesBySymbol[holding.symbol] ?? [
-              {
-                role: "advisor",
-                text: `${holding.symbol} was imported from your CSV. Use this chat to review thesis, sizing, and risk for the position.`,
-              },
-            ],
-          ]),
-        );
-
-        setHoldings(parsedHoldings);
-        setDataSource("csv");
-        setMessagesBySymbol(nextMessages);
-        setSelectedSymbol(parsedHoldings[0].symbol);
-        setView("portfolio");
-        setUploadMessage(`Imported ${parsedHoldings.length} holdings from ${file.name}.`);
-      } catch (error) {
-        setUploadMessage(error instanceof Error ? error.message : "Unable to parse the uploaded CSV.");
-      } finally {
-        event.target.value = "";
-      }
-    };
-
-    reader.onerror = () => {
-      setUploadMessage("Failed to read the selected CSV file.");
-      event.target.value = "";
-    };
-
-    reader.readAsText(file);
-  }
-
   return (
     <div
       style={{
@@ -640,9 +641,9 @@ function App() {
     >
       <div
         style={{
-          maxWidth: 1240,
+          maxWidth: 1180,
           margin: "0 auto",
-          padding: "32px 20px 180px",
+          padding: "24px 18px 164px",
         }}
       >
         <header
@@ -650,29 +651,140 @@ function App() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            gap: 16,
-            marginBottom: 28,
+            gap: 18,
+            marginBottom: 22,
+            padding: "12px 16px",
+            borderRadius: 999,
+            background: "rgba(255, 250, 243, 0.92)",
+            border: `1px solid ${theme.line}`,
+            boxShadow: "0 16px 34px rgba(24, 34, 47, 0.08)",
             flexWrap: "wrap",
           }}
         >
-          <div>
-            <h1
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            <div
               style={{
-                fontSize: "clamp(2rem, 5vw, 4rem)",
-                lineHeight: 0.95,
-                marginBottom: 10,
-                fontFamily: fonts.display,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 42,
+                height: 42,
+                borderRadius: 999,
+                background: "linear-gradient(135deg, #18222f, #314658)",
+                border: `1px solid ${theme.line}`,
+                color: "#fffdf8",
+                fontSize: 18,
                 fontWeight: 700,
-                letterSpacing: "-0.04em",
               }}
             >
-              Meridian Portfolio
-            </h1>
-            <p style={{ color: theme.muted, maxWidth: 700, fontSize: 17 }}>
-              Review your portfolio on the home screen, open any holding, and chat with the adviser alongside the position details.
-            </p>
+              M
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.12em",
+                  color: theme.muted,
+                  marginBottom: 2,
+                }}
+              >
+                Meridian
+              </div>
+              <div
+                style={{
+                  fontSize: 28,
+                  lineHeight: 1,
+                  fontFamily: fonts.display,
+                  fontWeight: 700,
+                  letterSpacing: "-0.04em",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Portfolio
+              </div>
+            </div>
           </div>
-
+          <nav
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+            aria-label="Global navigation"
+          >
+            {[
+              { label: "Portfolio", active: true },
+              { label: "Analytics", active: false },
+              { label: "Cash", active: false },
+              { label: "Settings", active: false },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                style={{
+                  border: item.active ? `1px solid rgba(15, 118, 110, 0.18)` : `1px solid ${theme.line}`,
+                  background: item.active ? "rgba(216, 243, 239, 0.92)" : "#fffdf8",
+                  color: item.active ? theme.accent : theme.ink,
+                  borderRadius: 999,
+                  padding: "10px 14px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: item.active ? "default" : "pointer",
+                  boxShadow: item.active ? "0 10px 20px rgba(15, 118, 110, 0.08)" : "none",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "9px 12px",
+                borderRadius: 999,
+                background: "rgba(216, 243, 239, 0.92)",
+                border: "1px solid rgba(15, 118, 110, 0.14)",
+                color: theme.accent,
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: theme.accent,
+                }}
+              />
+              Live data
+            </div>
+            <div
+              style={{
+                padding: "9px 12px",
+                borderRadius: 999,
+                background: "#fffdf8",
+                border: `1px solid ${theme.line}`,
+                fontSize: 13,
+                color: theme.muted,
+              }}
+            >
+              {lastPriceUpdate ? new Date(lastPriceUpdate).toLocaleDateString() : "Syncing"}
+            </div>
+          </div>
         </header>
         {view === "portfolio" ? (
           <div style={{ display: "grid", gap: 20 }}>
@@ -686,46 +798,148 @@ function App() {
                   background: theme.panel,
                   border: `1px solid ${theme.line}`,
                   borderRadius: 28,
-                  padding: 28,
+                  padding: 20,
                   boxShadow: theme.shadow,
                 }}
               >
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 1.2fr) minmax(320px, 0.8fr)",
-                    gap: 24,
-                    alignItems: "start",
+                    gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)",
+                    gap: 22,
+                    alignItems: "stretch",
                   }}
                 >
-                  <div>
-                    <div style={{ color: theme.muted, marginBottom: 12 }}>Portfolio overview</div>
-                    <div style={{ fontSize: "clamp(2rem, 4vw, 3.5rem)", fontWeight: 700 }}>
-                      {isPortfolioLoading && !holdings.length ? "Loading..." : money(portfolioStats.value)}
-                    </div>
-                    {lastPriceUpdate === FALLBACK_GENERATED_AT && (
-                      <div style={{ color: theme.muted, fontSize: 13, marginTop: 4 }}>
-                        Prices as of {new Date(lastPriceUpdate).toLocaleDateString()} — refreshing from server...
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateRows: "auto auto 1fr",
+                      gap: 16,
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          color: theme.muted,
+                          marginBottom: 10,
+                          fontSize: 12,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                        }}
+                      >
+                        Portfolio overview
                       </div>
+                      <div style={{ fontSize: "clamp(2.4rem, 5vw, 4.5rem)", fontWeight: 700, lineHeight: 0.95 }}>
+                        {isPortfolioLoading && !holdings.length ? "Loading..." : money(portfolioStats.value)}
+                      </div>
+                      <div style={{ color: theme.muted, fontSize: 15, marginTop: 10, maxWidth: 520, lineHeight: 1.5 }}>
+                        A live snapshot of equity exposure, available cash, and the latest pricing date from the
+                        portfolio database.
+                      </div>
+                    </div>
+                    {!lastPriceUpdate && isPortfolioLoading && (
+                      <>
+                        <div style={{ color: theme.muted, fontSize: 13, marginTop: 4 }}>
+                          Loading latest portfolio data from the server...
+                        </div>
+                        <LoadingBar />
+                      </>
                     )}
-                    <div style={{ display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
-                      <StatChip label="Unrealized P/L" value={money(portfolioStats.pnl)} tone="accent" />
-                      <StatChip label="Return" value={pct(portfolioStats.pnlPct)} tone="gold" />
-                      <StatChip label="Holdings" value={`${holdings.length}`} tone="rose" />
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(160px, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      <OverviewMetric label="Unrealized P/L" value={money(portfolioStats.pnl)} tone="accent" />
+                      <OverviewMetric label="Portfolio Return" value={pct(portfolioStats.pnlPct)} tone="gold" />
+                      <OverviewMetric label="Cash Reserve" value={money(portfolioStats.cash)} tone="rose" />
+                      <OverviewMetric label="Tracked Holdings" value={`${holdings.length}`} />
                     </div>
                   </div>
 
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gridTemplateRows: "auto auto",
                       gap: 14,
+                      padding: 18,
+                      borderRadius: 24,
+                      background: "linear-gradient(180deg, rgba(255,253,248,0.94), rgba(244,239,231,0.94))",
+                      border: `1px solid ${theme.line}`,
                     }}
                   >
-                    <InfoCard label="Largest position" value={portfolioStats.largestHolding?.symbol ?? "—"} />
-                    <InfoCard label="Tracked holdings" value={`${holdings.length}`} />
-                    <InfoCard label="Portfolio return" value={pct(portfolioStats.pnlPct)} />
-                    <InfoCard label="Estimated cost basis" value={money(portfolioStats.cost)} />
+                    <div>
+                      <div
+                        style={{
+                          color: theme.muted,
+                          fontSize: 12,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          marginBottom: 12,
+                        }}
+                      >
+                        Market state
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                        <MarketStat label="Largest position" value={portfolioStats.largestHolding?.symbol ?? "—"} />
+                        <MarketStat label="Cost basis" value={money(portfolioStats.cost)} />
+                        <MarketStat label="Equity value" value={money(portfolioStats.equitiesValue)} />
+                        <MarketStat
+                          label="Latest pricing date"
+                          value={lastPriceUpdate ? new Date(lastPriceUpdate).toLocaleDateString() : "—"}
+                        />
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        borderRadius: 20,
+                        padding: 14,
+                        background: "rgba(255, 250, 243, 0.9)",
+                        border: `1px solid ${theme.line}`,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: theme.muted }}>
+                          Capital mix
+                        </div>
+                        <div style={{ color: theme.muted, fontSize: 13 }}>
+                          {equitySharePct.toFixed(0)}% equities / {cashSharePct.toFixed(0)}% cash
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: `${Math.max(equitySharePct, 8)}fr ${Math.max(cashSharePct, 8)}fr`,
+                          gap: 8,
+                          height: 18,
+                        }}
+                      >
+                        <div
+                          style={{
+                            borderRadius: 999,
+                            background: "linear-gradient(90deg, #18222f 0%, #314658 100%)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            borderRadius: 999,
+                            background: "linear-gradient(90deg, #f1b8c3 0%, #b94b5e 100%)",
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginTop: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 12, color: theme.muted }}>Equities</div>
+                          <div style={{ fontSize: 20, fontWeight: 700 }}>{money(portfolioStats.equitiesValue)}</div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 12, color: theme.muted }}>Cash</div>
+                          <div style={{ fontSize: 20, fontWeight: 700 }}>{money(portfolioStats.cash)}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -738,10 +952,11 @@ function App() {
             >
               <div
                 style={{
-                  background: "rgba(255, 250, 243, 0.8)",
+                  background: "rgba(255, 250, 243, 0.82)",
                   border: `1px solid ${theme.line}`,
                   borderRadius: 28,
-                  padding: 22,
+                  padding: 18,
+                  boxShadow: "0 18px 38px rgba(24, 34, 47, 0.07)",
                 }}
               >
                 <div
@@ -750,58 +965,44 @@ function App() {
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: 12,
-                    marginBottom: 18,
+                    marginBottom: 14,
                     flexWrap: "wrap",
                   }}
                 >
                   <div>
                     <h2 style={{ fontSize: 24, marginBottom: 4 }}>Holdings</h2>
                     <div style={{ color: theme.muted, fontSize: 14 }}>
-                      {dataSource === "api"
+                      {lastPriceUpdate
                         ? `Prices update from server · Last: ${new Date(lastPriceUpdate).toLocaleString()}`
-                        : "Viewing your uploaded CSV portfolio locally"}
+                        : "Loading latest prices from server"}
                     </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    {dataSource === "csv" && (
-                      <button
-                        onClick={() => setDataSource("api")}
-                        style={{
-                          border: `1px solid ${theme.line}`,
-                          background: "#fffdf8",
-                          color: theme.ink,
-                          borderRadius: 999,
-                          padding: "10px 16px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                          boxShadow: "0 10px 24px rgba(24, 34, 47, 0.06)",
-                        }}
-                      >
-                        Return to Live Portfolio
-                      </button>
-                    )}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,text/csv"
-                      onChange={handlePortfolioUpload}
-                      style={{ display: "none" }}
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <div
                       style={{
-                        border: `1px solid ${theme.line}`,
-                        background: "#fffdf8",
-                        color: theme.ink,
+                        padding: "9px 12px",
                         borderRadius: 999,
-                        padding: "10px 16px",
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        boxShadow: "0 10px 24px rgba(24, 34, 47, 0.06)",
+                        background: "#fffdf8",
+                        border: `1px solid ${theme.line}`,
+                        fontSize: 13,
+                        color: theme.muted,
                       }}
                     >
-                      Upload Portfolio CSV
-                    </button>
+                      {holdings.length} positions
+                    </div>
+                    <div
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: 999,
+                        background: "rgba(216, 243, 239, 0.92)",
+                        border: "1px solid rgba(15, 118, 110, 0.14)",
+                        fontSize: 13,
+                        color: theme.accent,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Click any row for details
+                    </div>
                   </div>
                 </div>
 
@@ -809,7 +1010,7 @@ function App() {
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: 12,
+                    gap: 10,
                   }}
                 >
                   {portfolioError && (
@@ -826,16 +1027,44 @@ function App() {
                     </div>
                   )}
                   {isPortfolioLoading && holdings.length === 0 && (
+                    <>
+                      <div
+                        style={{
+                          border: `1px solid ${theme.line}`,
+                          borderRadius: 20,
+                          padding: 18,
+                          background: "#fffdf8",
+                          color: theme.muted,
+                        }}
+                      >
+                        Loading holdings from the backend...
+                      </div>
+                      <LoadingHoldingCard />
+                      <LoadingHoldingCard />
+                      <LoadingHoldingCard />
+                    </>
+                  )}
+                  {holdings.length > 0 && (
                     <div
                       style={{
-                        border: `1px solid ${theme.line}`,
-                        borderRadius: 20,
-                        padding: 18,
-                        background: "#fffdf8",
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1.15fr) repeat(5, minmax(92px, 0.56fr)) 28px",
+                        gap: 14,
+                        alignItems: "center",
+                        padding: "0 18px 4px",
                         color: theme.muted,
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
                       }}
                     >
-                      Loading holdings from the backend...
+                      <div>Holding</div>
+                      <div style={{ textAlign: "right" }}>Weight</div>
+                      <div style={{ textAlign: "right" }}>Return</div>
+                      <div style={{ textAlign: "right" }}>Market value</div>
+                      <div style={{ textAlign: "right" }}>Shares</div>
+                      <div style={{ textAlign: "right" }}>Avg cost</div>
+                      <div />
                     </div>
                   )}
                   {holdings.map((holding) => {
@@ -849,41 +1078,54 @@ function App() {
                         style={{
                           textAlign: "left",
                           border: `1px solid ${theme.line}`,
-                          borderRadius: 24,
-                          padding: 18,
+                          borderRadius: 22,
+                          padding: "16px 18px",
                           background: "#fffdf8",
                           cursor: "pointer",
                           boxShadow: "0 12px 32px rgba(24, 34, 47, 0.08)",
                           display: "grid",
-                          gridTemplateColumns:
-                            "minmax(0, 1.1fr) minmax(110px, 0.55fr) repeat(3, minmax(90px, 0.55fr)) minmax(0, 1.5fr)",
-                          gap: 16,
+                          gridTemplateColumns: "minmax(0, 1.15fr) repeat(5, minmax(92px, 0.56fr)) 28px",
+                          gap: 14,
                           alignItems: "center",
+                          transition: "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
                         }}
                       >
                         <div
                           style={{
                             display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-start",
+                            alignItems: "center",
+                            gap: 14,
                           }}
                         >
                           <div>
-                            <div style={{ fontSize: 13, color: theme.muted }}>{holding.name}</div>
-                            <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.05 }}>{holding.symbol}</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{holding.symbol}</div>
+                            <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>{holding.name}</div>
                           </div>
                         </div>
 
-                        <ListMetric
+                        <HoldingDataCell
+                          label="Weight"
+                          value={`${((marketValue / portfolioStats.value) * 100).toFixed(1)}%`}
+                          align="right"
+                        />
+                        <HoldingDataCell
                           label="Return"
                           value={pct(gainPct)}
                           valueColor={gainPct >= 0 ? theme.accent : theme.rose}
+                          align="right"
                         />
-                        <ListMetric label="Market value" value={money(marketValue)} />
-                        <ListMetric label="Shares" value={`${holding.shares}`} />
-                        <ListMetric label="Avg cost" value={money(holding.avgCost)} />
-                        <div style={{ color: theme.muted, lineHeight: 1.5, fontSize: 14 }}>
-                          {holding.thesis}
+                        <HoldingDataCell label="Market value" value={money(marketValue)} align="right" />
+                        <HoldingDataCell label="Shares" value={`${holding.shares}`} align="right" />
+                        <HoldingDataCell label="Avg cost" value={money(holding.avgCost)} align="right" />
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            color: theme.muted,
+                            fontSize: 22,
+                          }}
+                        >
+                          ›
                         </div>
                       </button>
                     );
@@ -904,7 +1146,7 @@ function App() {
                   background: "rgba(255, 250, 243, 0.86)",
                   border: `1px solid ${theme.line}`,
                   borderRadius: 28,
-                  padding: 24,
+                  padding: 20,
                   boxShadow: theme.shadow,
                 }}
               >
@@ -959,54 +1201,45 @@ function App() {
                   />
                 </div>
 
-                <DetailBlock title="Investment thesis" text={selectedHolding.thesis} />
-                <DetailBlock title="Near-term catalyst" text={selectedHolding.catalyst} />
-                <DetailBlock title="Main risk" text={selectedHolding.risk} />
-
-                <div style={{ marginTop: 24 }}>
-                  <div style={{ fontSize: 13, color: theme.muted, marginBottom: 10 }}>Portfolio notes</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    {selectedHolding.notes.map((note) => (
-                      <span
-                        key={note}
-                        style={{
-                          padding: "10px 14px",
-                          background: "#fffdf8",
-                          borderRadius: 999,
-                          border: `1px solid ${theme.line}`,
-                          fontSize: 14,
-                        }}
-                      >
-                        {note}
-                      </span>
-                    ))}
+                {Array.isArray(selectedHolding.notes) && selectedHolding.notes.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <div style={{ fontSize: 13, color: theme.muted, marginBottom: 10 }}>Portfolio notes</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      {selectedHolding.notes.map((note) => (
+                        <span
+                          key={note}
+                          style={{
+                            padding: "10px 14px",
+                            background: "#fffdf8",
+                            borderRadius: 999,
+                            border: `1px solid ${theme.line}`,
+                            fontSize: 14,
+                          }}
+                        >
+                          {note}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </section>
           )
         )}
       </div>
-      {uploadMessage && (
-        <div
-          style={{
-            position: "fixed",
-            top: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "rgba(255, 253, 248, 0.98)",
-            color: theme.ink,
-            padding: "12px 16px",
-            borderRadius: 999,
-            boxShadow: "0 18px 40px rgba(24, 34, 47, 0.14)",
-            fontSize: 14,
-            zIndex: 30,
-            border: `1px solid ${theme.line}`,
-          }}
-        >
-          {uploadMessage}
-        </div>
-      )}
+      <style>{`
+        @keyframes portfolioLoadBar {
+          0% {
+            transform: translateX(-112%) scaleX(0.86);
+          }
+          55% {
+            transform: translateX(148%) scaleX(1.04);
+          }
+          100% {
+            transform: translateX(258%) scaleX(0.86);
+          }
+        }
+      `}</style>
       {view === "portfolio" && (
         <div
           style={{
@@ -1262,7 +1495,7 @@ function App() {
                   marginBottom: 14,
                 }}
               >
-                {["What is the risk?", "Should I trim?", "What is the thesis?", "Should I add more?"].map(
+                {["What is the risk?", "Should I trim?", "Should I add more?", "How large is this position?"].map(
                   (prompt) => (
                     <button
                       key={prompt}
