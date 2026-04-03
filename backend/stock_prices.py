@@ -5,11 +5,6 @@ from typing import Any
 
 from supabase import Client, create_client
 
-from portfolio import PORTFOLIO_HOLDINGS
-
-
-_HOLDING_NAME_BY_SYMBOL = {holding["symbol"]: holding["name"] for holding in PORTFOLIO_HOLDINGS}
-
 
 def _get_supabase_client() -> Client:
     supabase_url = os.getenv("SUPABASE_URL")
@@ -28,7 +23,7 @@ def _normalize_price_row(row: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "symbol": symbol,
-        "name": _HOLDING_NAME_BY_SYMBOL.get(symbol, symbol),
+        "name": symbol,
         "tradingDate": trading_date,
         "price": round(close_value, 2),
         "currency": "USD",

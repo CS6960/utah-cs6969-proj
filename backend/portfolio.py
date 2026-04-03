@@ -6,76 +6,6 @@ from typing import Any
 from supabase import Client, create_client
 
 
-PORTFOLIO_HOLDINGS = [
-    {
-        "symbol": "AAPL",
-        "name": "Apple",
-        "thesis": "Consumer ecosystem moat plus services margin expansion.",
-        "catalyst": "WWDC AI rollout and buyback support.",
-        "risk": "iPhone replacement cycle slows if consumer demand softens.",
-        "notes": ["Large-cap core", "Low turnover", "Good tax lot cushion"],
-    },
-    {
-        "symbol": "MSFT",
-        "name": "Microsoft",
-        "thesis": "Cloud cash flow funds AI capex without stressing quality.",
-        "catalyst": "Azure AI monetization and Copilot attach rate.",
-        "risk": "Valuation is rich if enterprise AI spend pauses.",
-        "notes": ["AI platform exposure", "Core compounder", "High quality"],
-    },
-    {
-        "symbol": "JPM",
-        "name": "JPMorgan",
-        "thesis": "Best-in-class bank franchise with diversified earnings.",
-        "catalyst": "NII resilience and capital return.",
-        "risk": "Credit costs rise if macro deteriorates.",
-        "notes": ["Financial ballast", "Dividend support", "Lower beta"],
-    },
-    {
-        "symbol": "NVDA",
-        "name": "NVIDIA",
-        "thesis": "AI compute demand remains supply constrained.",
-        "catalyst": "Blackwell ramp and inference demand.",
-        "risk": "Position can become oversized after sharp rallies.",
-        "notes": ["Higher volatility", "Strong momentum", "Trim candidate"],
-    },
-    {
-        "symbol": "AMZN",
-        "name": "Amazon",
-        "thesis": "Retail margins and AWS cash flow support long-duration growth.",
-        "catalyst": "AWS acceleration and advertising expansion.",
-        "risk": "Margin upside fades if consumer spending slows.",
-        "notes": ["Consumer plus cloud", "Secular growth", "Execution heavy"],
-    },
-    {
-        "symbol": "GOOGL",
-        "name": "Alphabet",
-        "thesis": "Search cash flows fund AI investment without leverage stress.",
-        "catalyst": "AI product adoption and cloud operating leverage.",
-        "risk": "AI competition pressures search economics.",
-        "notes": ["Cash-rich", "Ad cyclical", "AI optionality"],
-    },
-    {
-        "symbol": "LLY",
-        "name": "Eli Lilly",
-        "thesis": "Obesity and diabetes franchise drives multi-year earnings growth.",
-        "catalyst": "Manufacturing scale and expanded indications.",
-        "risk": "High expectations leave little room for execution misses.",
-        "notes": ["Healthcare growth", "Premium multiple", "Lower correlation"],
-    },
-    {
-        "symbol": "XOM",
-        "name": "Exxon Mobil",
-        "thesis": "Cash generation and capital discipline support shareholder returns.",
-        "catalyst": "Production growth and oil price support.",
-        "risk": "Commodity exposure can drag if crude weakens.",
-        "notes": ["Energy hedge", "Dividend support", "Cyclical"],
-    },
-]
-
-_HOLDING_METADATA = {holding["symbol"]: holding for holding in PORTFOLIO_HOLDINGS}
-
-
 def _get_supabase_client() -> Client:
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
@@ -161,36 +91,40 @@ def get_live_portfolio() -> dict[str, Any]:
         .order("stock_symbol")
         .execute()
     )
+    stocks_response = supabase.table("stocks").select("symbol,name,currency").execute()
+
+    stock_meta_by_symbol = {
+        str(row["symbol"]).upper(): {
+            "name": row.get("name") or str(row["symbol"]).upper(),
+            "currency": row.get("currency") or "USD",
+        }
+        for row in (stocks_response.data or [])
+    }
 
     holdings: list[dict[str, Any]] = []
     for position in positions_response.data or []:
         symbol = str(position["stock_symbol"]).upper()
-        metadata = _HOLDING_METADATA.get(
-            symbol,
-            {
-                "symbol": symbol,
-                "name": symbol,
-                "thesis": "No thesis recorded.",
-                "catalyst": "No catalyst recorded.",
-                "risk": "No risk recorded.",
-                "notes": [],
-            },
-        )
         latest_price = prices_by_symbol.get(symbol)
 
         if latest_price is None:
             raise ValueError(f"No latest stock price found for {symbol} on {latest_trading_date}.")
 
+        stock_meta = stock_meta_by_symbol.get(symbol, {"name": symbol, "currency": "USD"})
         holdings.append(
             {
-                **metadata,
+                "symbol": symbol,
+                "name": stock_meta["name"],
                 "shares": float(position["shares"]),
                 "avgCost": round(float(position["avg_cost"]), 2),
                 "price": latest_price["price"],
-                "currency": latest_price["currency"],
+                "currency": stock_meta["currency"],
                 "tradingDate": latest_price["tradingDate"],
                 "dayChange": None,
                 "dayChangePct": None,
+                "thesis": "",
+                "catalyst": "",
+                "risk": "",
+                "notes": [],
             }
         )
 

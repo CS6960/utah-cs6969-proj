@@ -12,7 +12,7 @@ from agents import (
     model,
     retriever_agent,
 )
-from portfolio import PORTFOLIO_HOLDINGS, get_live_portfolio
+from portfolio import get_live_portfolio
 from tools.financial_reports_tools import (
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,
@@ -20,10 +20,6 @@ from tools.financial_reports_tools import (
 from tools.tools import get_portfolio_holdings, get_stock_price
 
 logger = logging.getLogger(__name__)
-
-# Ordered list of portfolio ticker symbols used by the deterministic fallback.
-_PORTFOLIO_TICKERS = [h["symbol"] for h in PORTFOLIO_HOLDINGS]
-
 
 @dataclass
 class EvidencePackage:
@@ -73,7 +69,9 @@ def _run_fallback(query: str) -> tuple[str, list[str]]:
         logger.warning("Fallback get_portfolio_holdings failed.")
 
     price_outputs: list[str] = []
-    for ticker in _PORTFOLIO_TICKERS:
+    live_portfolio = get_live_portfolio()
+    for holding in live_portfolio["holdings"]:
+        ticker = holding["symbol"]
         try:
             price_outputs.append(get_stock_price.invoke({"ticker": ticker}))
         except Exception:

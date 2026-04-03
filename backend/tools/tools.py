@@ -37,20 +37,21 @@ def get_stock_price(ticker: str) -> str:
 @tool
 def get_portfolio_holdings() -> str:
     """
-    Return the current portfolio holdings with prices, share counts, and thesis.
+    Return the current portfolio holdings with prices and share counts.
     Call this first to understand what the user owns before analyzing risk,
     diversification, or making recommendations.
     """
     try:
         logger.info("get_portfolio_holdings called.")
-        holdings = get_live_portfolio()
+        portfolio = get_live_portfolio()
+        holdings = portfolio["holdings"]
         lines = []
         for h in holdings:
             day_pct = h.get("dayChangePct")
             change_str = f"{day_pct:+.2f}%" if day_pct is not None else "N/A"
             lines.append(
                 f"{h['symbol']} ({h['name']}): {h['shares']} shares @ ${h['price']:.2f} "
-                f"(avg cost ${h['avgCost']:.2f}, day {change_str}) — {h['thesis']}"
+                f"(avg cost ${h['avgCost']:.2f}, day {change_str})"
             )
         logger.info("get_portfolio_holdings success. holdings=%d", len(holdings))
         return "PORTFOLIO HOLDINGS:\n" + "\n".join(lines)
