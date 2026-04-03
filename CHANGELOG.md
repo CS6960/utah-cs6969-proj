@@ -27,6 +27,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Phase status tables in `docs/08-AGENTS-TOOLS.md`, `docs/09-EVALUATION.md`, and `internal/evaluation_methodology.md`
 - Gate criteria for each phase transition documented in all three docs
 
+### Fixed
+- SB004: Moved `create_client()` from per-function calls to module-level singletons in `backend/portfolio.py`, `backend/stock_prices.py`, and `backend/tools/financial_reports_tools.py` to prevent connection churn on the free tier
+- SB001: Added `.limit(50)` to unbounded `stock_prices` and `document_tree_nodes` select queries to prevent free-tier statement timeouts
+
 ### Changed
 - `/api/agent` now routes through pipeline for default `financial_advisor` role
 - Extracted `extract_tools_called()` helper from `run_agent()` for reuse in pipeline

@@ -3,17 +3,18 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from dotenv import load_dotenv
 from supabase import Client, create_client
 
+load_dotenv()
 
-def _get_supabase_client() -> Client:
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
+_supabase_url = os.getenv("SUPABASE_URL")
+_supabase_key = os.getenv("SUPABASE_KEY")
 
-    if not supabase_url or not supabase_key:
-        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in the environment.")
+if not _supabase_url or not _supabase_key:
+    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in the environment.")
 
-    return create_client(supabase_url, supabase_key)
+_supabase: Client = create_client(_supabase_url, _supabase_key)
 
 
 def _normalize_price_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -52,13 +53,14 @@ def _get_latest_trading_date(supabase: Client) -> str:
 
 
 def get_latest_close_prices() -> dict[str, Any]:
-    supabase = _get_supabase_client()
+    supabase = _supabase
     latest_trading_date = _get_latest_trading_date(supabase)
     response = (
         supabase.table("stock_prices")
         .select("stock_symbol,trading_date,close")
         .eq("trading_date", latest_trading_date)
         .order("stock_symbol")
+        .limit(50)
         .execute()
     )
     rows = response.data or []
@@ -74,7 +76,7 @@ def get_latest_close_prices() -> dict[str, Any]:
 
 def get_latest_close_price(symbol: str) -> dict[str, Any]:
     normalized_symbol = symbol.upper()
-    supabase = _get_supabase_client()
+    supabase = _supabase
     response = (
         supabase.table("stock_prices")
         .select("stock_symbol,trading_date,close")

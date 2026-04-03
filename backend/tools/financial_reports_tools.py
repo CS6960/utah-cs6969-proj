@@ -24,10 +24,10 @@ def _get_client() -> OpenAI:
     return OpenAI(api_key=API_KEY, base_url="https://integrate.api.nvidia.com/v1")
 
 
-def _get_supabase_client() -> Client:
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise ValueError("SUPABASE_URL or SUPABASE_KEY is not configured.")
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL or SUPABASE_KEY is not configured.")
+
+_supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def _embed_query(query: str) -> list[float]:
@@ -45,8 +45,7 @@ def list_available_financial_reports() -> dict:
     """
     List available financial reports from document_tree_nodes by selecting document-level nodes.
     """
-    supabase = _get_supabase_client()
-    result = supabase.table("document_tree_nodes").select("file_title").eq("node_type", "document").execute()
+    result = _supabase.table("document_tree_nodes").select("file_title").eq("node_type", "document").limit(50).execute()
     file_titles = sorted({row.get("file_title") for row in (result.data or []) if row.get("file_title")})
     reports = [{"file_title": file_title} for file_title in file_titles]
     logger.info("Listed available reports from document_tree_nodes. total_reports=%s", len(reports))
@@ -71,7 +70,6 @@ def retrieve_embedded_financial_report_info(
         top_k,
         query[:120],
     )
-    supabase = _get_supabase_client()
     query_embedding = _embed_query(query)
     returned_count = max(1, int(top_k))
 
@@ -82,7 +80,7 @@ def retrieve_embedded_financial_report_info(
         "match_count": returned_count,
         "match_depth": 2,
     }
-    matches_result = supabase.rpc("match_document_tree_nodes", rpc_params).execute()
+    matches_result = _supabase.rpc("match_document_tree_nodes", rpc_params).execute()
     raw_matches = matches_result.data or []
 
     if not raw_matches:
