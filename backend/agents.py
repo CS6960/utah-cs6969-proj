@@ -3,10 +3,15 @@ import os
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
-from tools.tools import ADVISOR_TOOLS, REPORT_TOOLS, RETRIEVER_TOOLS
+from tools.tools import (
+    BASE_ADVISOR_TOOLS,
+    REPORT_RETRIEVAL_TOOLS,
+    RETRIEVER_TOOLS,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -22,9 +27,96 @@ model = ChatOpenAI(
     base_url=BASE_URL,
 )
 
+financial_reports_retrieval_agent = create_agent(
+    model,
+    tools=REPORT_RETRIEVAL_TOOLS,
+    system_prompt=(
+        "You are a financial reports retrieval agent. "
+        "Your job is to gather evidence from already indexed financial reports, not to give portfolio advice. "
+        "Use `list_available_financial_reports` to discover available reports, then use "
+        "`retrieve_embedded_financial_report_info` to fetch the most relevant passages. "
+        "Return a concise retrieval summary that includes file titles, excerpts, and any retrieval limits. "
+        "Do not invent report contents, report names, or retrieval output. "
+        "If no indexed reports are available, say so clearly."
+    ),
+)
+
+
+@tool
+def call_financial_reports_retrieval_agent(query: str) -> str:
+    """
+    Delegate SEC filing and financial report retrieval to the dedicated
+    financial_reports_retrieval_agent and return its evidence summary.
+    """
+    result = financial_reports_retrieval_agent.invoke({"messages": [HumanMessage(content=query)]})
+    return result["messages"][-1].content
+
+
+@tool
+def call_skeptic_response(query: str, current_analysis: str) -> str:
+    """
+    Generate a skeptical review that highlights risks, missing evidence,
+    and weak assumptions in the current analysis.
+    """
+    prompt = (
+        f"USER QUESTION:\n{query}\n\n"
+        f"CURRENT ANALYSIS:\n{current_analysis}\n\n"
+        "Provide a skeptical review focused on downside risk, unsupported claims, "
+        "missing evidence, and alternative explanations."
+    )
+    result = model.invoke(
+        [
+            SystemMessage(
+                content=(
+                    "You are a skeptical financial reviewer. "
+                    "Challenge the current analysis, surface missing evidence, identify downside risks, "
+                    "and point out overconfidence or unsupported claims. "
+                    "Be concise, specific, and evidence-oriented."
+                )
+            ),
+            HumanMessage(content=prompt),
+        ]
+    )
+    return result.content
+
+
+@tool
+def call_visionary_response(query: str, current_analysis: str, skeptic_response: str) -> str:
+    """
+    Generate a visionary review after considering the current analysis
+    and the skeptic's critique.
+    """
+    prompt = (
+        f"USER QUESTION:\n{query}\n\n"
+        f"CURRENT ANALYSIS:\n{current_analysis}\n\n"
+        f"SKEPTIC RESPONSE:\n{skeptic_response}\n\n"
+        "Provide a visionary response that adds upside scenarios, strategic opportunities, "
+        "and longer-term perspectives while staying grounded in the evidence."
+    )
+    result = model.invoke(
+        [
+            SystemMessage(
+                content=(
+                    "You are a visionary financial reviewer. "
+                    "Expand the analysis with upside scenarios, longer-term optionality, strategic opportunities, "
+                    "and second-order effects that a cautious analyst might miss. "
+                    "Be concise, concrete, and grounded in the provided context."
+                )
+            ),
+            HumanMessage(content=prompt),
+        ]
+    )
+    return result.content
+
+
 financial_advisor_agent = create_agent(
     model,
-    tools=ADVISOR_TOOLS,
+    tools=[
+        *BASE_ADVISOR_TOOLS,
+        call_financial_reports_retrieval_agent,
+        call_skeptic_response,
+        call_visionary_response,
+    ],
     system_prompt=(
         "You are a financial advisor assistant for a portfolio analysis application. "
         "You help the user understand their portfolio, holdings, concentration, performance, "
@@ -34,30 +126,17 @@ financial_advisor_agent = create_agent(
         "concentration, or stock-specific questions. "
         "For any question about SEC filings, 10-K, 10-Q, risk factors, management discussion, "
         "financial statements, or report-specific claims, you must call "
-        "`list_available_financial_reports` first to get a valid filename, then call "
-        "`retrieve_embedded_financial_report_info` before answering. "
-        "Do not answer report-content questions from memory. Use retrieved passages as evidence. "
-        "If no embedded report is available or no filename is known, say that clearly and ask for the "
-        "report to be embedded first. "
+        "`call_financial_reports_retrieval_agent` and use its evidence before answering. "
+        "Before finalizing any summary or recommendation, you must first draft your working analysis, "
+        "then call `call_skeptic_response`, then call `call_visionary_response`, and only then produce "
+        "the final answer. "
+        "The required order is: working analysis -> retrieval -> skeptic -> visionary -> final answer. "
+        "Your final answer should integrate both the skeptical and visionary perspectives into one coherent summary. "
+        "Do not answer report-content questions from memory. "
         "Ground your answers in the available portfolio data and current market data when possible. "
         "Be clear, analytical, concise, and practical. "
         "Do not make up holdings, prices, or portfolio facts. "
         "If the available data is insufficient, say so plainly."
-    ),
-)
-
-financial_reports_embedding_specialist_agent = create_agent(
-    model,
-    tools=REPORT_TOOLS,
-    system_prompt=(
-        "You are a financial reports retrieval specialist. "
-        "You help the user query already indexed financial report data. "
-        "Use `list_available_financial_reports` to discover available reports, then use "
-        "`retrieve_embedded_financial_report_info` to retrieve the most relevant passages. "
-        "The retrieval tool selects relevant document nodes, traverses the tree, and returns ranked matches. "
-        "Be explicit about file titles, traversal-based retrieval results, and any limits in the available data. "
-        "Do not invent report contents or retrieval output. "
-        "If no indexed reports are available, say so clearly."
     ),
 )
 
@@ -95,7 +174,7 @@ retriever_agent = create_agent(
 
 AGENTS = {
     "financial_advisor": financial_advisor_agent,
-    "financial_reports_embedding_specialist": financial_reports_embedding_specialist_agent,
+    "financial_reports_retrieval_agent": financial_reports_retrieval_agent,
 }
 
 

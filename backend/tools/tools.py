@@ -60,15 +60,13 @@ def get_portfolio_holdings() -> str:
         return f"Error fetching portfolio: {e!s}"
 
 
-ADVISOR_TOOLS = [
+BASE_ADVISOR_TOOLS = [
     DuckDuckGoSearchResults(),
     YahooFinanceNewsTool(),
     get_stock_price,
-    list_available_financial_reports,
-    retrieve_embedded_financial_report_info,
 ]
 
-REPORT_TOOLS = [
+REPORT_RETRIEVAL_TOOLS = [
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,
 ]
