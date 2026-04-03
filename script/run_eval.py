@@ -250,7 +250,7 @@ def query_agent(question: str) -> tuple[str, list[str]]:
         resp = requests.post(
             f"{BACKEND_URL}/api/agent",
             json={"query": question, "role": "financial_advisor"},
-            timeout=120,
+            timeout=300,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -365,9 +365,11 @@ def run_eval(stage: str, do_score: bool = False):
                 scores["relational_recall"],
             )
 
+        # Insert each result immediately to avoid batch insert timeouts on free-tier Supabase
+        sb.table("eval_runs").insert(row).execute()
+        logger.info("  Stored result for '%s'.", question[:40])
         results.append(row)
 
-    sb.table("eval_runs").insert(results).execute()
     logger.info("Stored %d eval results for stage '%s'.", len(results), stage)
     return results
 

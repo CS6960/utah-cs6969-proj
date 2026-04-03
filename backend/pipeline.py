@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 
@@ -34,9 +35,9 @@ class EvidencePackage:
 
 
 def build_portfolio_context() -> str:
-    holdings = get_live_portfolio()
+    data = get_live_portfolio()
     lines = []
-    for h in holdings:
+    for h in data["holdings"]:
         lines.append(
             f"{h['symbol']} ({h['name']}): {h['shares']} shares @ ${h['price']:.2f}, "
             f"avg cost ${h['avgCost']:.2f}, day change {h.get('dayChangePct', 'N/A')}%"
@@ -106,13 +107,17 @@ def run_retriever(query: str, portfolio_context: str) -> EvidencePackage:
     tools_called: list[str] = []
     evidence_text = ""
 
-    human_content = f"Portfolio:\n{portfolio_context}\n\nQuestion: {query}"
-    try:
-        result = retriever_agent.invoke({"messages": [HumanMessage(content=human_content)]})
-        tools_called = extract_tools_called(result["messages"])
-        evidence_text = result["messages"][-1].content
-    except Exception:
-        logger.exception("Retriever agent failed — will run deterministic fallback.")
+    use_agent = os.environ.get("RETRIEVER_USE_AGENT", "0") == "1"
+    if use_agent:
+        human_content = f"Portfolio:\n{portfolio_context}\n\nQuestion: {query}"
+        try:
+            result = retriever_agent.invoke({"messages": [HumanMessage(content=human_content)]})
+            tools_called = extract_tools_called(result["messages"])
+            evidence_text = result["messages"][-1].content
+        except Exception:
+            logger.exception("Retriever agent failed — will run deterministic fallback.")
+    else:
+        logger.info("Skipping retriever agent (RETRIEVER_USE_AGENT != 1), using deterministic path.")
 
     if not tools_called:
         evidence_text, tools_called = _run_fallback(query)
