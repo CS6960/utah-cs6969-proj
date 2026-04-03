@@ -2,7 +2,7 @@
 
 This project runs on **Supabase Free (Nano) tier**. All backend and script code
 must respect the constraints below. A pre-commit linter
-(`scripts/check_supabase_rules.py`) enforces the machine-checkable subset.
+(`script/check_supabase_rules.py`) enforces the machine-checkable subset.
 
 ## Hard Limits (free tier, April 2026)
 
@@ -153,8 +153,8 @@ The linter runs automatically on `git commit` via `.git/hooks/pre-commit`.
 
 **Manual run:**
 ```bash
-python scripts/check_supabase_rules.py                          # scan all backend/script files
-python scripts/check_supabase_rules.py backend/pipeline.py      # scan specific file
+python script/check_supabase_rules.py                          # scan all backend/script files
+python script/check_supabase_rules.py backend/pipeline.py      # scan specific file
 ```
 
 **Rules checked automatically:** SB001–SB006 (see script docstring for details).

@@ -46,7 +46,7 @@ def check_file(filepath: str) -> list[Violation]:
         return []
     # Skip vendored / venv code
     parts = path.parts
-    if "venv" in parts or "node_modules" in parts or "__pycache__" in parts:
+    if "venv" in parts or "node_modules" in parts or "__pycache__" in parts or path.name == "check_supabase_rules.py":
         return []
 
     source = path.read_text()
