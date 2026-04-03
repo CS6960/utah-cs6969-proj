@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import csv
-from pathlib import Path
+import os
 from typing import Any
+
+from supabase import Client, create_client
+
 
 PORTFOLIO_HOLDINGS = [
     {
         "symbol": "AAPL",
         "name": "Apple",
-        "shares": 42,
-        "avgCost": 184.1,
         "thesis": "Consumer ecosystem moat plus services margin expansion.",
         "catalyst": "WWDC AI rollout and buyback support.",
         "risk": "iPhone replacement cycle slows if consumer demand softens.",
@@ -18,8 +18,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "MSFT",
         "name": "Microsoft",
-        "shares": 18,
-        "avgCost": 376.84,
         "thesis": "Cloud cash flow funds AI capex without stressing quality.",
         "catalyst": "Azure AI monetization and Copilot attach rate.",
         "risk": "Valuation is rich if enterprise AI spend pauses.",
@@ -28,8 +26,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "JPM",
         "name": "JPMorgan",
-        "shares": 35,
-        "avgCost": 171.42,
         "thesis": "Best-in-class bank franchise with diversified earnings.",
         "catalyst": "NII resilience and capital return.",
         "risk": "Credit costs rise if macro deteriorates.",
@@ -38,8 +34,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "NVDA",
         "name": "NVIDIA",
-        "shares": 16,
-        "avgCost": 92.33,
         "thesis": "AI compute demand remains supply constrained.",
         "catalyst": "Blackwell ramp and inference demand.",
         "risk": "Position can become oversized after sharp rallies.",
@@ -48,8 +42,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "AMZN",
         "name": "Amazon",
-        "shares": 14,
-        "avgCost": 163.25,
         "thesis": "Retail margins and AWS cash flow support long-duration growth.",
         "catalyst": "AWS acceleration and advertising expansion.",
         "risk": "Margin upside fades if consumer spending slows.",
@@ -58,8 +50,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "GOOGL",
         "name": "Alphabet",
-        "shares": 20,
-        "avgCost": 145.8,
         "thesis": "Search cash flows fund AI investment without leverage stress.",
         "catalyst": "AI product adoption and cloud operating leverage.",
         "risk": "AI competition pressures search economics.",
@@ -68,8 +58,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "LLY",
         "name": "Eli Lilly",
-        "shares": 8,
-        "avgCost": 712.4,
         "thesis": "Obesity and diabetes franchise drives multi-year earnings growth.",
         "catalyst": "Manufacturing scale and expanded indications.",
         "risk": "High expectations leave little room for execution misses.",
@@ -78,8 +66,6 @@ PORTFOLIO_HOLDINGS = [
     {
         "symbol": "XOM",
         "name": "Exxon Mobil",
-        "shares": 26,
-        "avgCost": 101.7,
         "thesis": "Cash generation and capital discipline support shareholder returns.",
         "catalyst": "Production growth and oil price support.",
         "risk": "Commodity exposure can drag if crude weakens.",
@@ -87,93 +73,145 @@ PORTFOLIO_HOLDINGS = [
     },
 ]
 
-PRICE_DATA_PATH = Path(__file__).resolve().parent / "data" / "stock_prices.csv"
+_HOLDING_METADATA = {holding["symbol"]: holding for holding in PORTFOLIO_HOLDINGS}
 
 
-def _safe_float(value: Any) -> float | None:
-    if value is None:
-        return None
+def _get_supabase_client() -> Client:
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    if not supabase_url or not supabase_key:
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in the environment.")
+
+    return create_client(supabase_url, supabase_key)
 
 
-def _load_price_rows() -> dict[str, dict[str, Any]]:
-    if not PRICE_DATA_PATH.exists():
-        raise ValueError(f"Price data file not found: {PRICE_DATA_PATH}")
+def _get_latest_prices_by_symbol(supabase: Client) -> tuple[str, dict[str, dict[str, Any]]]:
+    latest_date_response = (
+        supabase.table("stock_prices")
+        .select("trading_date")
+        .order("trading_date", desc=True)
+        .limit(1)
+        .execute()
+    )
+    latest_rows = latest_date_response.data or []
+
+    if not latest_rows:
+        raise ValueError("No stock_prices rows found in Supabase.")
+
+    latest_trading_date = latest_rows[0].get("trading_date")
+
+    if not latest_trading_date:
+        raise ValueError("Latest trading date is missing from stock_prices.")
+
+    prices_response = (
+        supabase.table("stock_prices")
+        .select("stock_symbol,trading_date,close")
+        .eq("trading_date", latest_trading_date)
+        .execute()
+    )
 
     prices_by_symbol: dict[str, dict[str, Any]] = {}
+    for row in prices_response.data or []:
+        symbol = str(row["stock_symbol"]).upper()
+        prices_by_symbol[symbol] = {
+            "tradingDate": str(row["trading_date"]),
+            "price": round(float(row["close"]), 2),
+            "currency": "USD",
+        }
 
-    with PRICE_DATA_PATH.open(newline="", encoding="utf-8") as csv_file:
-        reader = csv.DictReader(csv_file)
-
-        for row in reader:
-            symbol = (row.get("symbol") or "").strip().upper()
-
-            if not symbol:
-                continue
-
-            prices_by_symbol[symbol] = {
-                "price": _safe_float(row.get("price")),
-                "previousClose": _safe_float(row.get("previous_close")),
-                "currency": (row.get("currency") or "USD").strip() or "USD",
-            }
-
-    return prices_by_symbol
+    return str(latest_trading_date), prices_by_symbol
 
 
 def get_price_snapshot(symbol: str) -> dict[str, Any]:
     normalized_symbol = symbol.upper()
-    prices_by_symbol = _load_price_rows()
-    price_row = prices_by_symbol.get(normalized_symbol)
+    supabase = _get_supabase_client()
+    response = (
+        supabase.table("stock_prices")
+        .select("stock_symbol,trading_date,close")
+        .eq("stock_symbol", normalized_symbol)
+        .order("trading_date", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
 
-    if price_row is None:
+    if not rows:
         raise KeyError(normalized_symbol)
 
-    price = price_row["price"]
-    previous_close = price_row["previousClose"]
-
-    if price is None:
-        raise ValueError(f"No price available for {normalized_symbol}.")
-
-    day_change = None if previous_close in (None, 0) else round(price - previous_close, 2)
-    day_change_pct = None if previous_close in (None, 0) else round((day_change / previous_close) * 100, 2)
-
+    latest_row = rows[0]
     return {
         "symbol": normalized_symbol,
-        "price": round(price, 2),
-        "previousClose": None if previous_close is None else round(previous_close, 2),
-        "currency": price_row["currency"],
-        "dayChange": day_change,
-        "dayChangePct": day_change_pct,
+        "tradingDate": str(latest_row["trading_date"]),
+        "price": round(float(latest_row["close"]), 2),
+        "previousClose": None,
+        "currency": "USD",
+        "dayChange": None,
+        "dayChangePct": None,
     }
 
 
-def get_live_portfolio() -> list[dict[str, Any]]:
-    holdings: list[dict[str, Any]] = []
+def get_live_portfolio() -> dict[str, Any]:
+    supabase = _get_supabase_client()
+    latest_trading_date, prices_by_symbol = _get_latest_prices_by_symbol(supabase)
 
-    for base_holding in PORTFOLIO_HOLDINGS:
-        snapshot = get_price_snapshot(base_holding["symbol"])
+    positions_response = (
+        supabase.table("portfolio_positions")
+        .select("stock_symbol,shares,avg_cost")
+        .order("stock_symbol")
+        .execute()
+    )
+
+    holdings: list[dict[str, Any]] = []
+    for position in positions_response.data or []:
+        symbol = str(position["stock_symbol"]).upper()
+        metadata = _HOLDING_METADATA.get(
+            symbol,
+            {
+                "symbol": symbol,
+                "name": symbol,
+                "thesis": "No thesis recorded.",
+                "catalyst": "No catalyst recorded.",
+                "risk": "No risk recorded.",
+                "notes": [],
+            },
+        )
+        latest_price = prices_by_symbol.get(symbol)
+
+        if latest_price is None:
+            raise ValueError(f"No latest stock price found for {symbol} on {latest_trading_date}.")
 
         holdings.append(
             {
-                **base_holding,
-                "price": snapshot["price"],
-                "currency": snapshot["currency"],
-                "dayChange": snapshot["dayChange"],
-                "dayChangePct": snapshot["dayChangePct"],
+                **metadata,
+                "shares": float(position["shares"]),
+                "avgCost": round(float(position["avg_cost"]), 2),
+                "price": latest_price["price"],
+                "currency": latest_price["currency"],
+                "tradingDate": latest_price["tradingDate"],
+                "dayChange": None,
+                "dayChangePct": None,
             }
         )
 
-    return holdings
+    cash_response = supabase.table("portfolio_cash").select("currency,cash_balance").order("currency").execute()
+    cash_balances = [
+        {"currency": str(row["currency"]).upper(), "cashBalance": round(float(row["cash_balance"]), 2)}
+        for row in (cash_response.data or [])
+    ]
+
+    return {
+        "holdings": holdings,
+        "cashBalances": cash_balances,
+        "latestTradingDate": latest_trading_date,
+    }
 
 
 def get_live_holding(symbol: str) -> dict[str, Any]:
     normalized_symbol = symbol.upper()
+    portfolio = get_live_portfolio()
 
-    for holding in get_live_portfolio():
+    for holding in portfolio["holdings"]:
         if holding["symbol"] == normalized_symbol:
             return holding
 

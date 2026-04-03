@@ -36,7 +36,7 @@ def health():
 @app.get("/api/portfolio")
 def portfolio():
     try:
-        return {"holdings": get_live_portfolio()}
+        return get_live_portfolio()
     except ValueError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 

@@ -19,3 +19,18 @@ create table if not exists public.stock_prices (
 
 create index if not exists idx_stock_prices_stock_id_date
     on public.stock_prices (stock_symbol, trading_date desc);
+
+create table if not exists public.portfolio_positions (
+    stock_symbol text primary key references public.stocks(symbol) on delete cascade,
+    shares numeric(18, 4) not null check (shares >= 0),
+    avg_cost numeric(12, 2) not null check (avg_cost >= 0),
+    updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.portfolio_cash (
+    currency text primary key,
+    cash_balance numeric(14, 2) not null check (cash_balance >= 0),
+    updated_at timestamptz not null default timezone('utc', now()),
+    constraint portfolio_cash_currency_format check (currency = upper(currency)),
+    constraint portfolio_cash_currency_length check (char_length(currency) = 3)
+);

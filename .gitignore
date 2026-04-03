@@ -12,4 +12,5 @@ scout.sh
 internal/
 
 *.env
+*.env.local
 .vscode/

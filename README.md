@@ -20,10 +20,13 @@ A React 19 dashboard with six tabbed modules: Weekly Review, Risk Analytics, Con
 ```bash
 cd frontend
 npm install
+cp .env.example .env.local
 npm run dev       # Start Vite dev server (HMR enabled)
 npm run build     # Production build to dist/
 npm run preview   # Serve production build locally
 ```
+
+To point the local frontend at a deployed backend, set `VITE_API_BASE` in `frontend/.env.local`. An example value is included in `frontend/.env.example`.
 
 ### Live Demo
 
@@ -37,7 +40,9 @@ A FastAPI backend for portfolio data, agent endpoints, and related calculations.
 
 ```bash
 cd backend
+direnv allow
 pip install -r requirements.txt
+cp .env.example .env.local
 python app.py     # Run dev server on http://localhost:8000
 ```
 
@@ -55,6 +60,7 @@ The repo now includes a minimal Supabase schema plus a CSV-based workflow for 8 
 - `backend/supabase/schema.sql` – creates `stocks` and `stock_prices`
 - `backend/scripts/fetch_stock_prices_csv.py` – fetches close prices into a reusable CSV
 - `backend/scripts/seed_supabase_stocks.py` – seeds 8 symbols and historical close-price rows from CSV
+- `backend/scripts/seed_portfolio_state.py` – seeds portfolio positions and cash balances
 - `backend/.env.example` – required environment variables
 
 The schema uses `stocks.symbol` as the primary key and `stock_prices.stock_symbol` as the foreign key for simpler joins and manual inspection.
@@ -64,19 +70,39 @@ Both scripts use the fixed CSV path `backend/data/historical_stock_prices_2026-0
 
 ```bash
 cd backend
+direnv allow
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-Then set your Supabase project values in `.env`, run the SQL in the Supabase SQL editor, and seed:
+Then set your Supabase project values in `backend/.env.local`, run the SQL in the Supabase SQL editor, and seed:
 
 ```bash
 cd backend
 python scripts/fetch_stock_prices_csv.py
 python scripts/seed_supabase_stocks.py
+python scripts/seed_portfolio_state.py
 ```
 
 The fetch step writes `backend/data/historical_stock_prices_2026-03-24_2026-03-31.csv`, so you only need to pull the market data once and can reseed the database from that CSV after that.
+The portfolio-state seed script uses the current hardcoded holdings and a configurable `CASH_BALANCES` list in the script. It defaults to one cash row: `USD 0.00`.
+
+## Direnv
+
+This repo uses per-directory `direnv` files:
+- [backend/.envrc](/Users/danielsun/Courses/utah-cs6960-agents/course-project/backend/.envrc)
+- [frontend/.envrc](/Users/danielsun/Courses/utah-cs6960-agents/course-project/frontend/.envrc)
+
+Typical local setup:
+
+```bash
+cd /Users/danielsun/Courses/utah-cs6960-agents/course-project/backend
+direnv allow
+
+cd /Users/danielsun/Courses/utah-cs6960-agents/course-project/frontend
+direnv allow
+```
+
+After that, backend commands load only `backend/.env.local`, and frontend commands load only `frontend/.env.local`.
 
 ## Development Workflow
 
