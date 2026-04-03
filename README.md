@@ -48,13 +48,17 @@ python app.py     # Run dev server on http://localhost:8000
 
 ## Supabase Stock Tables
 
-The repo now includes a minimal Supabase schema and seed script for 8 stocks plus 7 daily close-price rows per stock.
+The repo now includes a minimal Supabase schema plus a CSV-based workflow for 8 stocks and their March 24 to March 31, 2026 close prices.
 
 ### Files
 
 - `backend/supabase/schema.sql` – creates `stocks` and `stock_prices`
-- `backend/scripts/seed_supabase_stocks.py` – seeds 8 symbols and 56 historical close-price rows
+- `backend/scripts/fetch_stock_prices_csv.py` – fetches close prices into a reusable CSV
+- `backend/scripts/seed_supabase_stocks.py` – seeds 8 symbols and historical close-price rows from CSV
 - `backend/.env.example` – required environment variables
+
+The schema uses `stocks.symbol` as the primary key and `stock_prices.stock_symbol` as the foreign key for simpler joins and manual inspection.
+Both scripts use the fixed CSV path `backend/data/historical_stock_prices_2026-03-24_2026-03-31.csv`.
 
 ### Run It
 
@@ -68,8 +72,11 @@ Then set your Supabase project values in `.env`, run the SQL in the Supabase SQL
 
 ```bash
 cd backend
+python scripts/fetch_stock_prices_csv.py
 python scripts/seed_supabase_stocks.py
 ```
+
+The fetch step writes `backend/data/historical_stock_prices_2026-03-24_2026-03-31.csv`, so you only need to pull the market data once and can reseed the database from that CSV after that.
 
 ## Development Workflow
 
