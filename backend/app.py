@@ -4,7 +4,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents import run_agent
-from pipeline import run_pipeline
 from portfolio import get_live_holding, get_live_portfolio
 from stock_prices import get_latest_close_price, get_latest_close_prices
 
@@ -74,8 +73,8 @@ async def agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
     role = data.get("role", "financial_advisor")
-    if role in (None, "financial_advisor"):
-        return run_pipeline(query)
+    if role is None:
+        role = "financial_advisor"
     result, tools_called = run_agent(query, role=role)
     return {"result": result, "tools_called": tools_called}
 
@@ -84,7 +83,7 @@ async def agent_endpoint(request: Request):
 async def report_agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
-    result, tools_called = run_agent(query, role="financial_reports_embedding_specialist")
+    result, tools_called = run_agent(query, role="financial_reports_retrieval_agent")
     return {"result": result, "tools_called": tools_called}
 
 
