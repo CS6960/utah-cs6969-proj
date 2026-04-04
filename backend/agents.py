@@ -3,7 +3,6 @@ import os
 from contextvars import ContextVar
 from typing import Any
 
-from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -20,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 _TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar("agent_trace", default=None)
 _TOOLS_CALLED: ContextVar[list[str] | None] = ContextVar("tools_called_trace", default=None)
-
-load_dotenv()
 
 API_KEY = os.getenv("API_KEY")
 BASE_URL = os.getenv("BASE_URL")
@@ -106,13 +103,16 @@ def call_financial_reports_retrieval_agent(query: str) -> str:
     _append_tools_called("call_financial_reports_retrieval_agent")
     result = financial_reports_retrieval_agent.invoke({"messages": [HumanMessage(content=query)]})
     response = result["messages"][-1].content
-    nested_tools_called = extract_tools_called(result["messages"])
-    for tool_name in nested_tools_called:
-        _append_tools_called(tool_name)
+    nested_tool_calls = extract_tool_call_details(result["messages"])
+    nested_tools_called = [tool_call["name"] for tool_call in nested_tool_calls]
+    for tool_call in nested_tool_calls:
+        _append_tools_called(tool_call["name"])
         _trace(
             "agent_tool_selection",
             role="financial_reports_retrieval_agent",
-            tool=tool_name,
+            tool=tool_call["name"],
+            args=tool_call["args"],
+            args_preview=tool_call["args_preview"],
             delegated_by="call_financial_reports_retrieval_agent",
         )
     _trace(
@@ -273,16 +273,39 @@ def extract_tools_called(messages: list) -> list[str]:
     return tools_called
 
 
+def extract_tool_call_details(messages: list) -> list[dict[str, Any]]:
+    tool_calls: list[dict[str, Any]] = []
+    for msg in messages:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                args = tc.get("args", {})
+                tool_calls.append(
+                    {
+                        "name": tc["name"],
+                        "args": args,
+                        "args_preview": _preview(args),
+                    }
+                )
+    return tool_calls
+
+
 def run_agent(query: str, role: str = "financial_advisor"):
     token = _start_trace(role, query)
     agent = AGENTS.get(role, financial_advisor_agent)
     try:
         result = agent.invoke({"messages": [HumanMessage(content=query)]})
-        tools_called = extract_tools_called(result["messages"])
+        tool_calls = extract_tool_call_details(result["messages"])
+        tools_called = [tool_call["name"] for tool_call in tool_calls]
         response = result["messages"][-1].content
-        for tool_name in tools_called:
-            _append_tools_called(tool_name)
-            _trace("agent_tool_selection", role=role, tool=tool_name)
+        for tool_call in tool_calls:
+            _append_tools_called(tool_call["name"])
+            _trace(
+                "agent_tool_selection",
+                role=role,
+                tool=tool_call["name"],
+                args=tool_call["args"],
+                args_preview=tool_call["args_preview"],
+            )
         trace, aggregated_tools_called = _end_trace(token)
         _trace(
             "agent_run_completed",

@@ -56,6 +56,7 @@ supabase.rpc("match_document_tree_nodes", {
     "match_threshold": 0.1,
     "match_count": 5,
     "match_depth": 2,
+    "filter_file_title": "AAPL_10K_2025.pdf",
 }).execute()
 ```
 

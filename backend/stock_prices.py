@@ -3,10 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from dotenv import load_dotenv
 from supabase import Client, create_client
-
-load_dotenv()
 
 _supabase_url = os.getenv("SUPABASE_URL")
 _supabase_key = os.getenv("SUPABASE_KEY")

@@ -89,20 +89,20 @@ The portfolio-state seed script uses the current hardcoded holdings and a config
 ## Direnv
 
 This repo uses per-directory `direnv` files:
-- [backend/.envrc](/Users/danielsun/Courses/utah-cs6960-agents/course-project/backend/.envrc)
-- [frontend/.envrc](/Users/danielsun/Courses/utah-cs6960-agents/course-project/frontend/.envrc)
+- [backend/.envrc](/utah-cs6969-proj/backend/.envrc)
+- [frontend/.envrc](/utah-cs6969-proj/frontend/.envrc)
 
 Typical local setup:
 
 ```bash
-cd /Users/danielsun/Courses/utah-cs6960-agents/course-project/backend
+cd /utah-cs6969-proj/backend
 direnv allow
 
-cd /Users/danielsun/Courses/utah-cs6960-agents/course-project/frontend
+cd /utah-cs6969-proj/frontend
 direnv allow
 ```
 
-After that, backend commands load only `backend/.env.local`, and frontend commands load only `frontend/.env.local`.
+After that, each directory loads `.env.local` when present, and falls back to `.env`.
 
 ## Development Workflow
 
