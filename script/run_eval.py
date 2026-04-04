@@ -371,8 +371,8 @@ def run_eval(stage: str, do_score: bool = False):
         sb.table("eval_runs").insert(row).execute()  # noqa: SB003
         logger.info("  Stored result for '%s'.", question[:40])
         results.append(row)
-        # sleep for 5 seconds between questions to avoid overwhelming the backend or hitting rate limits
-        time.sleep(5)
+        # sleep for 60 seconds between questions to avoid overwhelming the backend or hitting rate limits
+        time.sleep(60)
 
     logger.info("Stored %d eval results for stage '%s'.", len(results), stage)
     return results
