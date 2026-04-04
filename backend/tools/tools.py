@@ -91,6 +91,8 @@ BASE_ADVISOR_TOOLS = [
     DuckDuckGoSearchResults(),
     YahooFinanceNewsTool(),
     get_stock_price,
+    get_portfolio_holdings,
+    get_stock_price,
     calculator,
 ]
 
