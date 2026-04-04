@@ -78,10 +78,10 @@ STAGES_ORDERED = [
 # ---------------------------------------------------------------------------
 
 PRESET_QUESTIONS = [
-    # "What is my biggest portfolio risk?",
-    # "Am I diversified enough?",
-    # "Which holdings look strongest?",
-    # "Where should new cash go?",
+    "What is my biggest portfolio risk?",
+    "Am I diversified enough?",
+    "Which holdings look strongest?",
+    "Where should new cash go?",
     "What is the operating margin for Nvida?",
 ]
 
