@@ -1,6 +1,6 @@
 # Tree RAG
 
-This document describes the report-ingestion and retrieval flow implemented in [script/test_10k_llm_nvd.py](/Users/zhihao/personal_projects/utah-cs6969-proj/script/test_10k_llm_nvd.py) and mirrored by the backend report tools in [backend/tools/financial_reports_tools.py](/Users/zhihao/personal_projects/utah-cs6969-proj/backend/tools/financial_reports_tools.py).
+This document describes the report-ingestion and retrieval flow implemented in [script/test_10k_llm_nvd.py](/Users/zhihao/personal_projects/utah-cs6969-proj/script/test_10k_llm_nvd.py) and mirrored by the backend report tools in [backend/agent_tools/financial_reports_tools.py](/Users/zhihao/personal_projects/utah-cs6969-proj/backend/agent_tools/financial_reports_tools.py).
 
 ## Goal
 
@@ -100,7 +100,7 @@ This makes it possible to answer with both a precise chunk and its surrounding s
 
 ## Backend Mirror
 
-The backend mirrors the same ideas in [backend/tools/financial_reports_tools.py](/Users/zhihao/personal_projects/utah-cs6969-proj/backend/tools/financial_reports_tools.py):
+The backend mirrors the same ideas in [backend/agent_tools/financial_reports_tools.py](/Users/zhihao/personal_projects/utah-cs6969-proj/backend/agent_tools/financial_reports_tools.py):
 
 - report data is kept in `REPORT_STORE`
 - embedded nodes are kept in `EMBEDDED_REPORT_STORE`

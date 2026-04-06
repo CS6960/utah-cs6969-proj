@@ -49,8 +49,8 @@ The Strategist and Critic receive this as formatted text in their prompt.
 ### Files
 
 - [backend/agents.py](../backend/agents.py)
-- [backend/tools/tools.py](../backend/tools/tools.py)
-- [backend/tools/financial_reports_tools.py](../backend/tools/financial_reports_tools.py)
+- [backend/agent_tools/tools.py](../backend/agent_tools/tools.py)
+- [backend/agent_tools/financial_reports_tools.py](../backend/agent_tools/financial_reports_tools.py)
 - [backend/app.py](../backend/app.py)
 - [backend/portfolio.py](../backend/portfolio.py)
 
@@ -88,7 +88,7 @@ Behavior:
 
 ### Tool Registry
 
-The tool lists live in [backend/tools/tools.py](../backend/tools/tools.py).
+The tool lists live in [backend/agent_tools/tools.py](../backend/agent_tools/tools.py).
 
 #### Advisor Tools
 
@@ -166,7 +166,7 @@ Adds a `query_news_articles` tool to the Retriever so it can pull temporal news 
 
 | File | Purpose |
 |------|---------|
-| `backend/tools/news_tools.py` | `@tool query_news_articles(tickers, start_date, end_date, limit)` |
+| `backend/agent_tools/news_tools.py` | `@tool query_news_articles(tickers, start_date, end_date, limit)` |
 
 ### Tool design
 
@@ -201,9 +201,9 @@ Builds a static entity-relationship graph from the news corpus and gives the Ret
 
 | File | Purpose |
 |------|---------|
-| `backend/migrations/003_entity_relationships.sql` | Entity relationships table |
+| `backend/supabase/migrations/003_entity_relationships.sql` | Entity relationships table |
 | `script/build_graph.py` | Extract entity-relationship triples from news corpus |
-| `backend/tools/graph_tools.py` | `@tool traverse_entity_graph(entity, hops)` |
+| `backend/agent_tools/graph_tools.py` | `@tool traverse_entity_graph(entity, hops)` |
 
 ### Graph construction
 

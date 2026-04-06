@@ -1,4 +1,4 @@
-# Utah CS6960 Trading Agent
+# CS 6960 Course Project: Portfolio Research Agent
 
 An equity portfolio management dashboard for a ~$1M portfolio across 200–300 positions, managed by multiple teams using fundamental, systematic, and macroeconomic strategies.
 
@@ -28,10 +28,6 @@ npm run preview   # Serve production build locally
 
 To point the local frontend at a deployed backend, set `VITE_API_BASE` in `frontend/.env.local`. An example value is included in `frontend/.env.example`.
 
-### Live Demo
-
-Deployed to GitHub Pages: https://haotsai101.github.io/utah-cs6969-proj/
-
 ## Backend
 
 A FastAPI backend for portfolio data, agent endpoints, and related calculations.
@@ -45,6 +41,8 @@ pip install -r requirements.txt
 cp .env.example .env.local
 python app.py     # Run dev server on http://localhost:8000
 ```
+
+The backend uses Uvicorn's default port `8000`.
 
 ### Endpoints
 

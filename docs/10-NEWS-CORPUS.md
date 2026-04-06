@@ -13,7 +13,7 @@ The news corpus serves two functions:
 
 Table: `news_articles` in Supabase.
 
-Migration: `backend/migrations/001_news_and_eval_tables.sql`
+Migration: `backend/supabase/migrations/001_news_and_eval_tables.sql`
 
 | Column       | Type         | Description |
 |--------------|-------------|-------------|
@@ -174,5 +174,5 @@ This design ensures the agent's news awareness is grounded in stored, auditable 
 | File | Purpose |
 |------|---------|
 | `docs/10-NEWS-CORPUS.md` | This document |
-| `backend/migrations/001_news_and_eval_tables.sql` | Table schema |
+| `backend/supabase/migrations/001_news_and_eval_tables.sql` | Table schema |
 | `script/seed_news.py` | Fetch and insert articles |

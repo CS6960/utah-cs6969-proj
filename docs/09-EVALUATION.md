@@ -281,11 +281,11 @@ The noise ratio starts at ~5 articles and can be increased in later stages to st
 ### Prerequisites
 
 1. Apply migrations:
-   - `backend/migrations/001_news_and_eval_tables.sql`
-   - `backend/migrations/002_eval_schema_update.sql`
+   - `backend/supabase/migrations/001_news_and_eval_tables.sql`
+   - `backend/supabase/migrations/002_eval_schema_update.sql`
 2. Seed news articles: `python script/seed_news.py`
 3. Seed noise articles: `python script/seed_news.py --noise`
-4. Start the FastAPI backend: `cd backend && python app.py` on `http://localhost:8000`
+4. Start the FastAPI backend: `cd backend && python app.py` on `http://localhost:8000` (Uvicorn default port)
 
 ### Record a Stage
 
@@ -336,8 +336,8 @@ Human evaluation (Mikhail Berlay — finance minor, market experience) confirmed
 | File | Purpose |
 |------|---------|
 | `docs/09-EVALUATION.md` | This document |
-| `backend/migrations/001_news_and_eval_tables.sql` | Supabase schema for news + eval tables |
-| `backend/migrations/002_eval_schema_update.sql` | Schema update for temporal/relational/noise columns |
+| `backend/supabase/migrations/001_news_and_eval_tables.sql` | Supabase schema for news + eval tables |
+| `backend/supabase/migrations/002_eval_schema_update.sql` | Schema update for temporal/relational/noise columns |
 | `script/seed_news.py` | Fetch and insert news articles into the corpus |
 | `script/run_eval.py` | Run evaluations, score with LLM judge, print reports |
 | `backend/portfolio.py` | Static portfolio definition (8 holdings) |

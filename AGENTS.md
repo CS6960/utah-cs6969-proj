@@ -63,7 +63,7 @@ git push origin main
 
 ### Add a Backend Endpoint
 1. Add route to `backend/app.py`
-2. Test locally: `cd backend && python app.py` and use `http://localhost:8000`
+2. Test locally: `cd backend && python app.py` and use `http://localhost:8000` (Uvicorn default port)
 3. Commit and push — GitHub Actions tests on multiple Python versions
 
 ### Update Dependencies
