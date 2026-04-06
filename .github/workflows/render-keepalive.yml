@@ -13,7 +13,7 @@ jobs:
     - name: Ping Render health endpoint
       run: |
         curl --fail --silent --show-error \
-          --max-time 30 \
+          --max-time 90 \
           "$RENDER_HEALTHCHECK_URL"
       env:
         RENDER_HEALTHCHECK_URL: ${{ secrets.RENDER_HEALTHCHECK_URL }}
