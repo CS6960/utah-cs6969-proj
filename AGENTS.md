@@ -18,8 +18,8 @@ npm run preview
 
 ```bash
 cd backend
-pip install -r requirements.txt
-python app.py
+poetry install
+poetry run python app.py
 ```
 
 ### Git
@@ -38,7 +38,7 @@ git push origin main
 - **docs/** – API specs, module specifications, domain documentation
 - **.github/workflows/** – GitHub Actions:
   - `frontend.yml` – Runs on `frontend/` changes, deploys to GitHub Pages
-  - `backend.yml` – Runs on `backend/` changes, tests Python 3.9–3.12
+  - `backend.yml` – Runs on `backend/` changes, tests Python 3.11
 
 ## Code Style
 
@@ -53,6 +53,7 @@ git push origin main
 - Follow PEP 8 style guide
 - Add type hints where possible
 - Write tests alongside features
+- Target Python 3.11
 
 ## Common Tasks
 
@@ -63,12 +64,12 @@ git push origin main
 
 ### Add a Backend Endpoint
 1. Add route to `backend/app.py`
-2. Test locally: `cd backend && python app.py` and use `http://localhost:8000` (Uvicorn default port)
-3. Commit and push — GitHub Actions tests on multiple Python versions
+2. Test locally: `cd backend && poetry run python app.py` and use `http://localhost:8000` (Uvicorn default port)
+3. Commit and push — GitHub Actions tests on Python 3.11
 
 ### Update Dependencies
 - **Frontend:** `cd frontend && npm install <package>`
-- **Backend:** `pip install <package> && pip freeze > backend/requirements.txt`
+- **Backend:** `cd backend && poetry add <package>`
 
 ## Notes
 

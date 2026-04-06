@@ -37,9 +37,9 @@ A FastAPI backend for portfolio data, agent endpoints, and related calculations.
 ```bash
 cd backend
 direnv allow
-pip install -r requirements.txt
+poetry install
 cp .env.example .env.local
-python app.py     # Run dev server on http://localhost:8000
+poetry run python app.py     # Run dev server on http://localhost:8000
 ```
 
 The backend uses Uvicorn's default port `8000`.
@@ -69,16 +69,16 @@ Both scripts use the fixed CSV path `backend/data/historical_stock_prices_2026-0
 ```bash
 cd backend
 direnv allow
-pip install -r requirements.txt
+poetry install
 ```
 
 Then set your Supabase project values in `backend/.env.local`, run the SQL in the Supabase SQL editor, and seed:
 
 ```bash
 cd backend
-python scripts/fetch_stock_prices_csv.py
-python scripts/seed_supabase_stocks.py
-python scripts/seed_portfolio_state.py
+poetry run python scripts/fetch_stock_prices_csv.py
+poetry run python scripts/seed_supabase_stocks.py
+poetry run python scripts/seed_portfolio_state.py
 ```
 
 The fetch step writes `backend/data/historical_stock_prices_2026-03-24_2026-03-31.csv`, so you only need to pull the market data once and can reseed the database from that CSV after that.
