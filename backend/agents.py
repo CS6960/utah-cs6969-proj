@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 _TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar("agent_trace", default=None)
 _TOOLS_CALLED: ContextVar[list[str] | None] = ContextVar("tools_called_trace", default=None)
 
-API_KEY = os.getenv("API_KEY")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
 BASE_URL = os.getenv("BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
 
 model = ChatOpenAI(
     model=MODEL_NAME,
-    api_key=API_KEY,
+    api_key=LLM_API_KEY,
     base_url=BASE_URL,
 )
 

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-API_KEY = os.getenv("API_KEY")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
 BASE_URL = os.getenv("BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
 
@@ -279,7 +279,7 @@ def score_response(question: str, response: str) -> dict:
     """Use the LLM as a judge to score the response against ground truth."""
     from openai import OpenAI
 
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=BASE_URL)
     ground_truth = GROUND_TRUTH.get(question, "")
     temporal_facts = TEMPORAL_FACTS.get(question, [])
     relational_connections = RELATIONAL_CONNECTIONS.get(question, [])
