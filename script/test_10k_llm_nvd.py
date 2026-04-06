@@ -15,7 +15,8 @@ load_dotenv()
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 SUPABASE_URL = "https://ctublgctoyuwuxwanujg.supabase.co"
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-MODEL = os.getenv("MODEL_NAME")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL", "https://integrate.api.nvidia.com/v1")
+MODEL = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME")
 
 BATCH_SIZE = 10
 
@@ -32,7 +33,7 @@ SEMANTIC_SEPARATORS = ["\n\n", "\n", ". ", "? ", "! ", "},", "],", ", ", " ", ""
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = OpenAI(
   api_key=NVIDIA_API_KEY,
-  base_url="https://integrate.api.nvidia.com/v1"
+  base_url=LLM_BASE_URL
 )
 
 

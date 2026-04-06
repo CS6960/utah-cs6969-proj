@@ -21,13 +21,13 @@ _TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar("agent_trace", defa
 _TOOLS_CALLED: ContextVar[list[str] | None] = ContextVar("tools_called_trace", default=None)
 
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
-BASE_URL = os.getenv("BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
 
 model = ChatOpenAI(
-    model=MODEL_NAME,
+    model=LLM_MODEL_NAME,
     api_key=LLM_API_KEY,
-    base_url=BASE_URL,
+    base_url=LLM_BASE_URL,
 )
 
 

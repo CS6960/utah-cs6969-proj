@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
-BASE_URL = os.getenv("BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -279,7 +279,7 @@ def score_response(question: str, response: str) -> dict:
     """Use the LLM as a judge to score the response against ground truth."""
     from openai import OpenAI
 
-    client = OpenAI(api_key=LLM_API_KEY, base_url=BASE_URL)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     ground_truth = GROUND_TRUTH.get(question, "")
     temporal_facts = TEMPORAL_FACTS.get(question, [])
     relational_connections = RELATIONAL_CONNECTIONS.get(question, [])
@@ -293,7 +293,7 @@ def score_response(question: str, response: str) -> dict:
     )
 
     result = client.chat.completions.create(
-        model=MODEL_NAME,
+        model=LLM_MODEL_NAME,
         messages=[{"role": "user", "content": judge_input}],
         temperature=0.1,
     )

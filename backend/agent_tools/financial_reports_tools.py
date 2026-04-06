@@ -11,6 +11,7 @@ from supabase import Client, create_client
 logger = logging.getLogger(__name__)
 
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL", "https://integrate.api.nvidia.com/v1")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nvidia/nv-embed-v1")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -19,7 +20,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 def _get_client() -> OpenAI:
     if not LLM_API_KEY:
         raise ValueError("LLM_API_KEY is not configured.")
-    return OpenAI(api_key=LLM_API_KEY, base_url="https://integrate.api.nvidia.com/v1")
+    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
 
 if not SUPABASE_URL or not SUPABASE_KEY:
