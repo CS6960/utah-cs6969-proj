@@ -37,7 +37,7 @@ def _key_error_detail(error: KeyError) -> str:
     return str(error.args[0]) if error.args else str(error)
 
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "service": "backend", "version": BUILD_VERSION}
 
