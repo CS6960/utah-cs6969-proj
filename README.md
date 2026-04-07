@@ -32,6 +32,12 @@ To point the local frontend at a deployed backend, set `VITE_API_BASE` in `front
 
 A FastAPI backend for portfolio data, agent endpoints, and related calculations.
 
+### Service Status
+
+Public uptime status page:
+
+- [UptimeRobot Status Page](https://stats.uptimerobot.com/A5rRf3TXWN)
+
 ### Setup & Commands
 
 ```bash
