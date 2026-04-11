@@ -14,6 +14,7 @@ from agents import (
     retriever_agent,
 )
 from portfolio import get_live_portfolio
+from stock_prices import get_price_history_for_symbols
 from agent_tools.financial_reports_tools import (
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,
@@ -80,6 +81,30 @@ def _run_fallback(query: str) -> tuple[str, list[str]]:
     if price_outputs:
         fallback_parts.append("PRICE DATA:\n" + "\n".join(price_outputs))
         tools_called.append("get_stock_price")
+
+    try:
+        symbols = [h["symbol"] for h in live_portfolio["holdings"]]
+        history_by_symbol = get_price_history_for_symbols(symbols)
+        history_lines: list[str] = []
+        for symbol in symbols:
+            rows = history_by_symbol.get(symbol) or []
+            if not rows:
+                continue
+            first = rows[0]
+            last = rows[-1]
+            first_close = first["close"]
+            last_close = last["close"]
+            pct = ((last_close - first_close) / first_close * 100.0) if first_close else 0.0
+            daily = ", ".join(f"{r['tradingDate']}=${r['close']:.2f}" for r in rows)
+            history_lines.append(
+                f"{symbol} ({first['tradingDate']}->{last['tradingDate']}, "
+                f"{pct:+.2f}%): {daily}"
+            )
+        if history_lines:
+            fallback_parts.append("PRICE HISTORY:\n" + "\n".join(history_lines))
+            tools_called.append("get_stock_price_history")
+    except Exception:
+        logger.warning("Fallback get_price_history_for_symbols failed.")
 
     try:
         reports_output = list_available_financial_reports.invoke({})

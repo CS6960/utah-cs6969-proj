@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `get_stock_price_history` retriever tool and `get_price_history_for_symbol(s)` helpers in `backend/stock_prices.py` for date-range daily close queries against Supabase
+- Pipeline deterministic fallback now batch-fetches daily closes for all holdings in a single Supabase call and emits a `PRICE HISTORY` evidence block with weekly % change
 - Milestone 2 report (`internal/milestone2.tex`) with evaluation framework results, Phase 0/1 comparison, human feedback findings, and news data structure
 - Bibliography file (`internal/references.bib`) with all cited references including LLM-as-judge
 - Supabase free-tier coding rules documentation (`docs/08-SUPABASE-FREE-TIER.md`)
@@ -32,6 +34,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - SB004: Moved `create_client()` from per-function calls to module-level singletons in `backend/portfolio.py`, `backend/stock_prices.py`, and `backend/agent_tools/financial_reports_tools.py` to prevent connection churn on the free tier
 - SB001: Added `.limit(50)` to unbounded `stock_prices` and `document_tree_nodes` select queries to prevent free-tier statement timeouts
+- SB001: Added `.limit(50)` to `get_latest_close_prices_for_symbols` select in `backend/stock_prices.py` and to `_get_latest_prices_for_symbols` select in `backend/portfolio.py`
+- Retriever had no way to cite day-over-day price moves — historical CSV was seeded but no tool queried it; added `get_stock_price_history` and wired it into the retriever prompt and fallback
 
 ### Changed
 - `/api/agent` now routes through pipeline for default `financial_advisor` role

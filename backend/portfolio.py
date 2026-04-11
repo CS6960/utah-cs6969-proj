@@ -91,6 +91,7 @@ def _get_latest_prices_for_symbols(
         .select("stock_symbol,trading_date,close")
         .eq("trading_date", latest_trading_date)
         .in_("stock_symbol", normalized_symbols)
+        .limit(50)
         .execute()
     )
 

@@ -95,6 +95,7 @@ def get_latest_close_prices_for_symbols(symbols: list[str]) -> dict[str, Any]:
         .eq("trading_date", latest_trading_date)
         .in_("stock_symbol", normalized_symbols)
         .order("stock_symbol")
+        .limit(50)
         .execute()
     )
     rows = response.data or []
@@ -118,3 +119,47 @@ def get_latest_close_prices_for_symbols(symbols: list[str]) -> dict[str, Any]:
 
 def get_latest_close_price(symbol: str) -> dict[str, Any]:
     return get_latest_close_prices_for_symbols([symbol])["prices"][0]
+
+
+def get_price_history_for_symbols(
+    symbols: list[str],
+    start_date: str = "",
+    end_date: str = "",
+    max_rows: int = 200,
+) -> dict[str, list[dict[str, Any]]]:
+    normalized_symbols = _normalize_symbols(symbols)
+    if not normalized_symbols:
+        return {}
+
+    query = (
+        _supabase.table("stock_prices")
+        .select("stock_symbol,trading_date,close")
+        .in_("stock_symbol", normalized_symbols)
+    )
+    if start_date:
+        query = query.gte("trading_date", start_date)
+    if end_date:
+        query = query.lte("trading_date", end_date)
+    response = query.order("stock_symbol").order("trading_date").limit(max_rows).execute()
+    rows = response.data or []
+
+    history_by_symbol: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        symbol = str(row["stock_symbol"]).upper()
+        history_by_symbol.setdefault(symbol, []).append(
+            {
+                "tradingDate": str(row["trading_date"]),
+                "close": round(float(row["close"]), 2),
+            }
+        )
+    return history_by_symbol
+
+
+def get_price_history_for_symbol(
+    symbol: str,
+    start_date: str = "",
+    end_date: str = "",
+    max_rows: int = 50,
+) -> list[dict[str, Any]]:
+    history = get_price_history_for_symbols([symbol], start_date, end_date, max_rows)
+    return history.get(symbol.strip().upper(), [])
