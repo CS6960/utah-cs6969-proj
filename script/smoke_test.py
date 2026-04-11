@@ -104,20 +104,34 @@ def boot_uvicorn(base_url: str) -> subprocess.Popen | None:
 
 
 def run_m_cash() -> tuple[bool, str]:
-    """M-CASH: structural check — no network required."""
-    # Insert backend onto sys.path so the structural import works.
-    backend_str = str(WORKTREE_BACKEND)
-    if backend_str not in sys.path:
-        sys.path.insert(0, backend_str)
+    """M-CASH: structural check — no network required.
 
+    Runs build_portfolio_context() in the worktree's venv Python to avoid
+    picking up an incompatible langgraph version from ~/.local/lib on the
+    host, which causes an ImportError unrelated to the function under test.
+    """
+    venv_python = WORKTREE_BACKEND / "venv" / "bin" / "python"
     t0 = time.time()
+    snippet = (
+        "import sys; "
+        f"sys.path.insert(0, {str(WORKTREE_BACKEND)!r}); "
+        "from agent_tools.strategist_tools import build_portfolio_context; "
+        "ctx = build_portfolio_context(); "
+        "assert 'CASH BALANCES' in ctx, 'no CASH BALANCES section'; "
+        "assert '$' in ctx, 'no dollar amount'; "
+        "print('OK')"
+    )
     try:
-        from agent_tools.strategist_tools import build_portfolio_context  # noqa: PLC0415
-
-        ctx = build_portfolio_context()
-        assert "CASH BALANCES" in ctx, f"M-CASH FAIL: no 'CASH BALANCES' section in portfolio context"
-        assert "$" in ctx, "M-CASH FAIL: no dollar amount in portfolio context"
+        result = subprocess.run(
+            [str(venv_python), "-c", snippet],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         elapsed = int((time.time() - t0) * 1000)
+        if result.returncode != 0 or "OK" not in result.stdout:
+            detail = (result.stderr or result.stdout or "").strip()
+            return False, f"M-CASH FAIL ({elapsed} ms): {detail}"
         return True, f"M-CASH PASS ({elapsed} ms)"
     except Exception as exc:
         elapsed = int((time.time() - t0) * 1000)
