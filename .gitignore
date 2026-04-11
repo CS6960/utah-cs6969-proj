@@ -17,3 +17,5 @@ internal/
 
 script/temp_files
 script/.DS_Store
+
+*/__pycache__/

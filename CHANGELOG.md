@@ -16,7 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Pipeline orchestrator (`backend/pipeline.py`) with Retriever → Strategist 2-agent pipeline
 - Retriever agent with SEC filing tools and deterministic fallback for tool-call failures
 - Strategist agent as direct LLM call for evidence synthesis
-- `RETRIEVER_TOOLS` list in `backend/tools/tools.py`
+- `RETRIEVER_TOOLS` list in `backend/agent_tools/tools.py`
 - `EvidencePackage` dataclass for structured evidence passing between pipeline stages
 - Per-stage logging with timestamps in pipeline orchestrator
 - Temporal Precision scoring dimension (1–5) to evaluation rubric with per-question date-stamped ground truth facts
@@ -30,7 +30,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Gate criteria for each phase transition documented in all three docs
 
 ### Fixed
-- SB004: Moved `create_client()` from per-function calls to module-level singletons in `backend/portfolio.py`, `backend/stock_prices.py`, and `backend/tools/financial_reports_tools.py` to prevent connection churn on the free tier
+- SB004: Moved `create_client()` from per-function calls to module-level singletons in `backend/portfolio.py`, `backend/stock_prices.py`, and `backend/agent_tools/financial_reports_tools.py` to prevent connection churn on the free tier
 - SB001: Added `.limit(50)` to unbounded `stock_prices` and `document_tree_nodes` select queries to prevent free-tier statement timeouts
 
 ### Changed
@@ -46,7 +46,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `tools_called` was always stored as empty list; backend now extracts tool names from LangChain intermediate messages
 
 - Evaluation framework for measuring agent quality across development stages
-- Supabase migration for `news_articles` and `eval_runs` tables (`backend/migrations/001_news_and_eval_tables.sql`)
+- Supabase migration for `news_articles` and `eval_runs` tables (`backend/supabase/migrations/001_news_and_eval_tables.sql`)
 - News seeding script with support for relevant and noise articles (`script/seed_news.py`)
 - Baseline evaluation runner with LLM-as-judge scoring (`script/run_eval.py`)
 - March 24–31, 2026 market analysis with ground truth answers (`internal/march_24_31_analysis.md`)

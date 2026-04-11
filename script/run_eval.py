@@ -35,9 +35,9 @@ logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-API_KEY = os.getenv("API_KEY")
-BASE_URL = os.getenv("BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -82,6 +82,7 @@ PRESET_QUESTIONS = [
     "Am I diversified enough?",
     "Which holdings look strongest?",
     "Where should new cash go?",
+    "What is the operating margin for Nvida?",
 ]
 
 # ---------------------------------------------------------------------------
@@ -278,7 +279,7 @@ def score_response(question: str, response: str) -> dict:
     """Use the LLM as a judge to score the response against ground truth."""
     from openai import OpenAI
 
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     ground_truth = GROUND_TRUTH.get(question, "")
     temporal_facts = TEMPORAL_FACTS.get(question, [])
     relational_connections = RELATIONAL_CONNECTIONS.get(question, [])
@@ -292,7 +293,7 @@ def score_response(question: str, response: str) -> dict:
     )
 
     result = client.chat.completions.create(
-        model=MODEL_NAME,
+        model=LLM_MODEL_NAME,
         messages=[{"role": "user", "content": judge_input}],
         temperature=0.1,
     )
@@ -370,8 +371,8 @@ def run_eval(stage: str, do_score: bool = False):
         sb.table("eval_runs").insert(row).execute()  # noqa: SB003
         logger.info("  Stored result for '%s'.", question[:40])
         results.append(row)
-        # sleep for 5 seconds between questions to avoid overwhelming the backend or hitting rate limits
-        time.sleep(5)
+        # sleep for 60 seconds between questions to avoid overwhelming the backend or hitting rate limits
+        time.sleep(60)
 
     logger.info("Stored %d eval results for stage '%s'.", len(results), stage)
     return results

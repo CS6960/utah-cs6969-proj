@@ -6,7 +6,7 @@ from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
 from langchain_core.tools import tool
 
 from portfolio import get_live_portfolio, get_price_snapshot
-from tools.financial_reports_tools import list_available_financial_reports, retrieve_embedded_financial_report_info
+from agent_tools.financial_reports_tools import list_available_financial_reports, retrieve_embedded_financial_report_info
 
 logger = logging.getLogger(__name__)
 
@@ -88,9 +88,6 @@ def calculator(expression: str) -> str:
 
 
 BASE_ADVISOR_TOOLS = [
-    DuckDuckGoSearchResults(),
-    YahooFinanceNewsTool(),
-    get_stock_price,
     get_portfolio_holdings,
     get_stock_price,
     calculator,

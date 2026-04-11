@@ -110,7 +110,7 @@ Agent failed to use its available tools across all 4 questions. Instead of query
 | 1.1 | Pipeline orchestrator | `backend/pipeline.py` (new) | `EvidencePackage` dataclass, `build_portfolio_context()`, `run_retriever()`, `run_strategist()`, `run_pipeline()` |
 | 1.2 | Retriever agent | `backend/agents.py` (modify) | New `retriever_agent` with system prompt instructing tool-based evidence gathering |
 | 1.3 | Strategist agent | `backend/agents.py` (modify) | New `strategist_agent` with system prompt for evidence synthesis (no tools) |
-| 1.4 | Retriever tool list | `backend/tools/tools.py` (modify) | `RETRIEVER_TOOLS = [get_stock_price, list_available_financial_reports, retrieve_embedded_financial_report_info]` |
+| 1.4 | Retriever tool list | `backend/agent_tools/tools.py` (modify) | `RETRIEVER_TOOLS = [get_stock_price, list_available_financial_reports, retrieve_embedded_financial_report_info]` |
 | 1.5 | API wiring | `backend/app.py` (modify) | `/api/agent` calls `run_pipeline()` instead of `run_agent()` |
 | 1.6 | Eval run | — | `python script/run_eval.py --stage rag_reports --score` |
 
@@ -228,8 +228,8 @@ All criteria must be met before starting Phase 2:
 
 | # | Deliverable | File | Description |
 |---|-------------|------|-------------|
-| 2.1 | News query tool | `backend/tools/news_tools.py` (new) | `@tool query_news_articles(tickers, start_date, end_date, limit)` — queries Supabase |
-| 2.2 | Tool registration | `backend/tools/tools.py` (modify) | Add `query_news_articles` to `RETRIEVER_TOOLS` |
+| 2.1 | News query tool | `backend/agent_tools/news_tools.py` (new) | `@tool query_news_articles(tickers, start_date, end_date, limit)` — queries Supabase |
+| 2.2 | Tool registration | `backend/agent_tools/tools.py` (modify) | Add `query_news_articles` to `RETRIEVER_TOOLS` |
 | 2.3 | Retriever prompt update | `backend/agents.py` (modify) | Add step 4: use `query_news_articles` for recent news |
 | 2.4 | Evidence extraction | `backend/pipeline.py` (modify) | Parse news articles from retriever tool results into `EvidencePackage.news_articles` |
 | 2.5 | Eval run | — | `python script/run_eval.py --stage news_agent --score` |
@@ -253,7 +253,7 @@ Does NOT filter by `relevant = true`. Agent sees noise articles and must demonst
 
 All criteria must be met before starting Phase 3:
 
-- [ ] `backend/tools/news_tools.py` exists with working `query_news_articles` tool
+- [ ] `backend/agent_tools/news_tools.py` exists with working `query_news_articles` tool
 - [ ] Tool registered in `RETRIEVER_TOOLS`
 - [ ] Retriever calls `query_news_articles` in all 4 preset questions
 - [ ] Eval recorded: `python script/run_eval.py --stage news_agent --score`
@@ -277,10 +277,10 @@ All criteria must be met before starting Phase 3:
 
 | # | Deliverable | File | Description |
 |---|-------------|------|-------------|
-| 3.1 | Entity table migration | `backend/migrations/003_entity_relationships.sql` (new) | Schema for `entity_relationships` table |
+| 3.1 | Entity table migration | `backend/supabase/migrations/003_entity_relationships.sql` (new) | Schema for `entity_relationships` table |
 | 3.2 | Graph construction script | `script/build_graph.py` (new) | Extract entity-relationship triples from news corpus using LLM, insert into Supabase |
-| 3.3 | Graph traversal tool | `backend/tools/graph_tools.py` (new) | `@tool traverse_entity_graph(entity, hops)` — queries Supabase |
-| 3.4 | Tool registration | `backend/tools/tools.py` (modify) | Add `traverse_entity_graph` to `RETRIEVER_TOOLS` |
+| 3.3 | Graph traversal tool | `backend/agent_tools/graph_tools.py` (new) | `@tool traverse_entity_graph(entity, hops)` — queries Supabase |
+| 3.4 | Tool registration | `backend/agent_tools/tools.py` (modify) | Add `traverse_entity_graph` to `RETRIEVER_TOOLS` |
 | 3.5 | Retriever prompt update | `backend/agents.py` (modify) | Add step 5: use graph tool for cross-sector connections |
 | 3.6 | Strategist prompt update | `backend/agents.py` (modify) | Emphasize tracing multi-hop causal chains when graph data is present |
 | 3.7 | Evidence extraction | `backend/pipeline.py` (modify) | Parse graph connections into `EvidencePackage.graph_connections` |
@@ -317,7 +317,7 @@ All criteria must be met before starting Phase 4:
 
 - [ ] Migration applied: `entity_relationships` table exists in Supabase
 - [ ] Graph seeded: `script/build_graph.py` run, at least 30 relationship rows in table
-- [ ] `backend/tools/graph_tools.py` exists with working `traverse_entity_graph` tool
+- [ ] `backend/agent_tools/graph_tools.py` exists with working `traverse_entity_graph` tool
 - [ ] Tool registered in `RETRIEVER_TOOLS`
 - [ ] Retriever calls `traverse_entity_graph` in at least 2 of 4 preset questions
 - [ ] Eval recorded: `python script/run_eval.py --stage graph --score`
@@ -421,9 +421,9 @@ critic         4.2      4.0     3.9      4.0     4.2     4.1
 | File | Phase |
 |------|-------|
 | `backend/pipeline.py` | 1 |
-| `backend/tools/news_tools.py` | 2 |
-| `backend/tools/graph_tools.py` | 3 |
-| `backend/migrations/003_entity_relationships.sql` | 3 |
+| `backend/agent_tools/news_tools.py` | 2 |
+| `backend/agent_tools/graph_tools.py` | 3 |
+| `backend/supabase/migrations/003_entity_relationships.sql` | 3 |
 | `script/build_graph.py` | 3 |
 | `backend/tests/test_pipeline.py` | 1–4 (optional) |
 | `docs/11-PIPELINE-PLAN.md` | — |
@@ -433,7 +433,7 @@ critic         4.2      4.0     3.9      4.0     4.2     4.1
 | File | Phases |
 |------|--------|
 | `backend/agents.py` | 1, 2, 3, 4 |
-| `backend/tools/tools.py` | 1, 2, 3 |
+| `backend/agent_tools/tools.py` | 1, 2, 3 |
 | `backend/app.py` | 1 |
 | `backend/pipeline.py` | 2, 3, 4 |
 

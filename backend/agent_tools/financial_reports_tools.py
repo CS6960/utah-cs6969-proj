@@ -4,24 +4,23 @@ import logging
 import os
 from typing import Any
 
-from dotenv import load_dotenv
 from langchain.tools import tool
 from openai import OpenAI
 from supabase import Client, create_client
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
-API_KEY = os.getenv("API_KEY")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL", "https://integrate.api.nvidia.com/v1")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nvidia/nv-embed-v1")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
 def _get_client() -> OpenAI:
-    if not API_KEY:
-        raise ValueError("API_KEY is not configured.")
-    return OpenAI(api_key=API_KEY, base_url="https://integrate.api.nvidia.com/v1")
+    if not LLM_API_KEY:
+        raise ValueError("LLM_API_KEY is not configured.")
+    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
 
 if not SUPABASE_URL or not SUPABASE_KEY:
@@ -57,16 +56,15 @@ def retrieve_embedded_financial_report_info(
     query: str,
     file_title: str = "",
     top_k: int = 5,
-    filename: str = "",
+    match_depth: int = 2,
 ) -> dict:
     """
     Retrieve relevant report content using server-side similarity search
     via the match_document_tree_nodes RPC, avoiding bulk embedding transfers.
     """
     logger.info(
-        "Retrieving embedded report info. file_title=%s filename=%s top_k=%s query_preview=%s",
+        "Retrieving embedded report info. file_title=%s top_k=%s query_preview=%s",
         file_title,
-        filename,
         top_k,
         query[:120],
     )
@@ -78,7 +76,8 @@ def retrieve_embedded_financial_report_info(
         "query_embedding": query_embedding,
         "match_threshold": 0.1,
         "match_count": returned_count,
-        "match_depth": 2,
+        "match_depth": match_depth,
+        "filter_file_title": file_title or None,
     }
     matches_result = _supabase.rpc("match_document_tree_nodes", rpc_params).execute()
     raw_matches = matches_result.data or []
@@ -86,13 +85,6 @@ def retrieve_embedded_financial_report_info(
     if not raw_matches:
         logger.warning("match_document_tree_nodes returned no results.")
         return {"error": "No matching document nodes found."}
-
-    # If a specific file_title was requested, filter to that document
-    selected_title = file_title or filename
-    if selected_title:
-        filtered = [m for m in raw_matches if m.get("file_title") == selected_title]
-        if filtered:
-            raw_matches = filtered
 
     scored_matches = []
     for match in raw_matches:

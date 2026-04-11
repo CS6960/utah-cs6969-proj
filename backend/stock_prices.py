@@ -3,10 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from dotenv import load_dotenv
 from supabase import Client, create_client
-
-load_dotenv()
 
 _supabase_url = os.getenv("SUPABASE_URL")
 _supabase_key = os.getenv("SUPABASE_KEY")
@@ -52,6 +49,17 @@ def _get_latest_trading_date(supabase: Client) -> str:
     return str(latest_date)
 
 
+def _normalize_symbols(symbols: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for symbol in symbols:
+        normalized_symbol = symbol.strip().upper()
+        if normalized_symbol and normalized_symbol not in seen:
+            normalized.append(normalized_symbol)
+            seen.add(normalized_symbol)
+    return normalized
+
+
 def get_latest_close_prices() -> dict[str, Any]:
     supabase = _supabase
     latest_trading_date = _get_latest_trading_date(supabase)
@@ -74,20 +82,39 @@ def get_latest_close_prices() -> dict[str, Any]:
     }
 
 
-def get_latest_close_price(symbol: str) -> dict[str, Any]:
-    normalized_symbol = symbol.upper()
+def get_latest_close_prices_for_symbols(symbols: list[str]) -> dict[str, Any]:
+    normalized_symbols = _normalize_symbols(symbols)
+    if not normalized_symbols:
+        return {"tradingDate": None, "prices": []}
+
     supabase = _supabase
+    latest_trading_date = _get_latest_trading_date(supabase)
     response = (
         supabase.table("stock_prices")
         .select("stock_symbol,trading_date,close")
-        .eq("stock_symbol", normalized_symbol)
-        .order("trading_date", desc=True)
-        .limit(1)
+        .eq("trading_date", latest_trading_date)
+        .in_("stock_symbol", normalized_symbols)
+        .order("stock_symbol")
         .execute()
     )
     rows = response.data or []
 
     if not rows:
-        raise KeyError(normalized_symbol)
+        raise KeyError(", ".join(normalized_symbols))
 
-    return _normalize_price_row(rows[0])
+    prices_by_symbol = {
+        str(row["stock_symbol"]).upper(): _normalize_price_row(row)
+        for row in rows
+    }
+    missing = [symbol for symbol in normalized_symbols if symbol not in prices_by_symbol]
+    if missing:
+        raise KeyError(", ".join(missing))
+
+    return {
+        "tradingDate": latest_trading_date,
+        "prices": [prices_by_symbol[symbol] for symbol in normalized_symbols],
+    }
+
+
+def get_latest_close_price(symbol: str) -> dict[str, Any]:
+    return get_latest_close_prices_for_symbols([symbol])["prices"][0]

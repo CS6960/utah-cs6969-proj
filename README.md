@@ -1,4 +1,4 @@
-# Utah CS6960 Trading Agent
+# CS 6960 Course Project: Portfolio Research Agent
 
 An equity portfolio management dashboard for a ~$1M portfolio across 200–300 positions, managed by multiple teams using fundamental, systematic, and macroeconomic strategies.
 
@@ -28,23 +28,27 @@ npm run preview   # Serve production build locally
 
 To point the local frontend at a deployed backend, set `VITE_API_BASE` in `frontend/.env.local`. An example value is included in `frontend/.env.example`.
 
-### Live Demo
-
-Deployed to GitHub Pages: https://haotsai101.github.io/utah-cs6969-proj/
-
 ## Backend
 
 A FastAPI backend for portfolio data, agent endpoints, and related calculations.
+
+### Service Status
+
+Public uptime status page:
+
+- [UptimeRobot Status Page](https://stats.uptimerobot.com/A5rRf3TXWN)
 
 ### Setup & Commands
 
 ```bash
 cd backend
 direnv allow
-pip install -r requirements.txt
+poetry install
 cp .env.example .env.local
-python app.py     # Run dev server on http://localhost:8000
+poetry run python app.py     # Run dev server on http://localhost:8000
 ```
+
+The backend uses Uvicorn's default port `8000`.
 
 ### Endpoints
 
@@ -71,16 +75,16 @@ Both scripts use the fixed CSV path `backend/data/historical_stock_prices_2026-0
 ```bash
 cd backend
 direnv allow
-pip install -r requirements.txt
+poetry install
 ```
 
 Then set your Supabase project values in `backend/.env.local`, run the SQL in the Supabase SQL editor, and seed:
 
 ```bash
 cd backend
-python scripts/fetch_stock_prices_csv.py
-python scripts/seed_supabase_stocks.py
-python scripts/seed_portfolio_state.py
+poetry run python scripts/fetch_stock_prices_csv.py
+poetry run python scripts/seed_supabase_stocks.py
+poetry run python scripts/seed_portfolio_state.py
 ```
 
 The fetch step writes `backend/data/historical_stock_prices_2026-03-24_2026-03-31.csv`, so you only need to pull the market data once and can reseed the database from that CSV after that.
@@ -89,20 +93,20 @@ The portfolio-state seed script uses the current hardcoded holdings and a config
 ## Direnv
 
 This repo uses per-directory `direnv` files:
-- [backend/.envrc](/Users/danielsun/Courses/utah-cs6960-agents/course-project/backend/.envrc)
-- [frontend/.envrc](/Users/danielsun/Courses/utah-cs6960-agents/course-project/frontend/.envrc)
+- [backend/.envrc](/utah-cs6969-proj/backend/.envrc)
+- [frontend/.envrc](/utah-cs6969-proj/frontend/.envrc)
 
 Typical local setup:
 
 ```bash
-cd /Users/danielsun/Courses/utah-cs6960-agents/course-project/backend
+cd /utah-cs6969-proj/backend
 direnv allow
 
-cd /Users/danielsun/Courses/utah-cs6960-agents/course-project/frontend
+cd /utah-cs6969-proj/frontend
 direnv allow
 ```
 
-After that, backend commands load only `backend/.env.local`, and frontend commands load only `frontend/.env.local`.
+After that, each directory loads `.env.local` when present, and falls back to `.env`.
 
 ## Development Workflow
 

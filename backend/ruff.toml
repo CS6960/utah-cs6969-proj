@@ -21,7 +21,7 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"tools/*.py" = ["S110"]  # allow bare except pass in tool handlers
+"agent_tools/*.py" = ["S110"]  # allow bare except pass in tool handlers
 "app.py" = ["S104"]      # binding to 0.0.0.0 is intentional for server
 
 [format]

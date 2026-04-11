@@ -14,11 +14,11 @@ from agents import (
     retriever_agent,
 )
 from portfolio import get_live_portfolio
-from tools.financial_reports_tools import (
+from agent_tools.financial_reports_tools import (
     list_available_financial_reports,
     retrieve_embedded_financial_report_info,
 )
-from tools.tools import get_portfolio_holdings, get_stock_price
+from agent_tools.tools import get_portfolio_holdings, get_stock_price
 
 logger = logging.getLogger(__name__)
 
