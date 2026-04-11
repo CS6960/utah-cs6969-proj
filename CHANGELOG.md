@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Milestone 2 report (`internal/milestone2.tex`) with evaluation framework results, Phase 0/1 comparison, human feedback findings, and news data structure
+- Bibliography file (`internal/references.bib`) with all cited references including LLM-as-judge
 - Supabase free-tier coding rules documentation (`docs/08-SUPABASE-FREE-TIER.md`)
 - Pre-commit linter (`script/check_supabase_rules.py`) enforcing 6 Supabase query safety rules (SB001–SB006)
 - Git pre-commit hook wired to lint staged Python files against Supabase rules
