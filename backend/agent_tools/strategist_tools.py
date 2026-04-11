@@ -350,13 +350,16 @@ def request_news(scope: str, tickers: list[str]) -> str:
     indicating the corpus is not yet wired. Do not call more than once
     per query — it will not return data until Phase 2 is implemented.
     """
-    from agents import _append_tools_called
+    evidence = EvidenceResponse(scope_request=f"news {tickers} : {scope}")
+    try:
+        from agents import _append_tools_called
 
-    _append_tools_called("request_news")
-    evidence = EvidenceResponse(
-        scope_request=f"news {tickers} : {scope}",
-        gaps=["news corpus not yet wired (Phase 2)"],
-    )
+        _append_tools_called("request_news")
+        evidence.gaps.append("news corpus not yet wired (Phase 2)")
+    except Exception as exc:
+        logger.exception("request_news failed: %s", exc)
+        evidence.errors.append(f"request_news exception: {type(exc).__name__}: {exc}")
+
     return serialize_for_llm(evidence)
 
 
