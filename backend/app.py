@@ -1,9 +1,14 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from agents import run_agent
-from portfolio import get_live_holding, get_live_holdings, get_live_portfolio
-from stock_prices import (
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+from agents import run_agent  # noqa: E402
+from portfolio import get_live_holding, get_live_holdings, get_live_portfolio  # noqa: E402
+from stock_prices import (  # noqa: E402
     get_latest_close_price,
     get_latest_close_prices,
     get_latest_close_prices_for_symbols,

@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 import time
 
@@ -329,7 +330,77 @@ def score_response(question: str, response: str) -> dict:
         }
 
 
-def run_eval(stage: str, do_score: bool = False):
+def _format_dump(stage: str, backend_url: str, results: list[dict]) -> str:
+    """Render eval results as a human-readable markdown transcript."""
+    started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines = [
+        f"# Eval run — stage={stage}",
+        "",
+        f"- Started: {started}",
+        f"- Backend: {backend_url}",
+        f"- Model: {LLM_MODEL_NAME}",
+        f"- Questions: {len(results)}",
+        "",
+        "---",
+        "",
+    ]
+    for idx, row in enumerate(results, start=1):
+        lines.append(f"## Q{idx}. {row['question']}")
+        lines.append("")
+        tools = row.get("tools_called") or []
+        lines.append(f"**Tools called:** {', '.join(tools) if tools else '(none)'}")
+        noise = row.get("noise_citations") or []
+        if noise:
+            lines.append(f"**Noise citations:** {', '.join(noise)}")
+        if row.get("groundedness") is not None and row.get("groundedness") != 0:
+            g = row["groundedness"]
+            c = row["completeness"]
+            a = row["actionability"]
+            t = row.get("temporal_precision", "-")
+            r = row.get("relational_recall", "-")
+            try:
+                avg = (g + c + a + (t or 0) + (r or 0)) / 5
+                lines.append(
+                    f"**LLM judge:** G:{g} C:{c} A:{a} T:{t} R:{r}  (avg {avg:.1f})"
+                )
+            except TypeError:
+                lines.append(f"**LLM judge:** G:{g} C:{c} A:{a} T:{t} R:{r}")
+            if row.get("notes"):
+                lines.append(f"**Judge notes:** {row['notes']}")
+        lines.append("")
+        lines.append("### Response")
+        lines.append("")
+        lines.append("```")
+        lines.append(row.get("response") or "")
+        lines.append("```")
+        lines.append("")
+        lines.append("### Human score (fill in)")
+        lines.append("")
+        lines.append(
+            "- Groundedness: \n- Completeness: \n- Actionability: "
+            "\n- Temporal precision: \n- Relational recall: \n- Notes: "
+        )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _resolve_dump_path(raw: str | None, stage: str) -> Path | None:
+    """Return the dump file path, generating a default when the flag has no value."""
+    if raw is None:
+        return None
+    repo_root = Path(__file__).resolve().parent.parent
+    if raw == "":
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return repo_root / "internal" / f"eval_{stage}_{ts}.md"
+    path = Path(raw)
+    if not path.is_absolute():
+        path = repo_root / path
+    return path
+
+
+def run_eval(stage: str, do_score: bool = False, dump_path: Path | None = None):
     """Run all preset questions and store results."""
     sb = get_supabase()
     results = []
@@ -375,6 +446,12 @@ def run_eval(stage: str, do_score: bool = False):
         time.sleep(60)
 
     logger.info("Stored %d eval results for stage '%s'.", len(results), stage)
+
+    if dump_path is not None:
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        dump_path.write_text(_format_dump(stage, BACKEND_URL, results))
+        logger.info("Wrote eval transcript to %s", dump_path)
+
     return results
 
 
@@ -459,6 +536,17 @@ def main():
     )
     parser.add_argument("--score", action="store_true", help="Score responses with LLM judge")
     parser.add_argument("--report", action="store_true", help="Print comparison report")
+    parser.add_argument(
+        "--dump",
+        type=str,
+        nargs="?",
+        const="",
+        default=None,
+        help=(
+            "Write agent transcript to a markdown file for human evaluation. "
+            "Pass a path, or omit the value to auto-generate internal/eval_<stage>_<ts>.md"
+        ),
+    )
     args = parser.parse_args()
 
     if args.report:
@@ -468,7 +556,8 @@ def main():
     if not args.stage:
         parser.error("--stage is required unless using --report")
 
-    run_eval(args.stage, do_score=args.score)
+    dump_path = _resolve_dump_path(args.dump, args.stage)
+    run_eval(args.stage, do_score=args.score, dump_path=dump_path)
 
 
 if __name__ == "__main__":
