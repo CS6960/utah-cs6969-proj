@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-from agents import run_agent  # noqa: E402
+from agents import run_agent, run_strategist_agent  # noqa: E402
 from portfolio import get_live_holding, get_live_holdings, get_live_portfolio  # noqa: E402
 from stock_prices import (  # noqa: E402
     get_latest_close_price,
@@ -113,10 +113,8 @@ def latest_stock_price(symbol: str):
 async def agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
-    role = data.get("role", "financial_advisor")
-    if role is None:
-        role = "financial_advisor"
-    result, tools_called, execution_trace = run_agent(query, role=role)
+    # role parameter intentionally ignored — /api/agent always runs Strategist in Phase 1b
+    result, tools_called, execution_trace = run_strategist_agent(query)
     return {"result": result, "tools_called": tools_called, "execution_trace": execution_trace}
 
 

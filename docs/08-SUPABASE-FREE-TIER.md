@@ -154,8 +154,8 @@ The linter runs automatically on `git commit` via `.git/hooks/pre-commit`.
 
 **Manual run:**
 ```bash
-python script/check_supabase_rules.py                          # scan all backend/script files
-python script/check_supabase_rules.py backend/pipeline.py      # scan specific file
+python script/check_supabase_rules.py                                          # scan all backend/script files
+python script/check_supabase_rules.py backend/agent_tools/strategist_tools.py  # scan specific file
 ```
 
 **Rules checked automatically:** SB001–SB006 (see script docstring for details).
@@ -169,4 +169,4 @@ implemented — document exceptions here until needed).
 |---|---|---|---|
 | 2026-04-03 | Pipeline times out, Supabase 522 | `retrieve_embedded_financial_report_info` fetched 600 rows with embeddings (~14 MB) | Switched to `match_document_tree_nodes` RPC |
 | 2026-04-03 | Eval batch insert fails | Single insert of 4 rows with 10 KB+ response text | Changed to per-row insert |
-| 2026-04-03 | Retriever agent causes statement timeouts | Agent makes 6 parallel `retrieve_embedded_financial_report_info` calls | Added `RETRIEVER_USE_AGENT` toggle, default off |
+| 2026-04-03 | Retriever agent causes statement timeouts | Agent makes 6 parallel `retrieve_embedded_financial_report_info` calls | Added `RETRIEVER_USE_AGENT` toggle, default off. **Phase 1b mitigation (2026-04-11):** the `_RAG_COUNTER` `ContextVar` in `backend/agents.py` hard-caps RAG calls at **3 per request** at the helper level, and `ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2)` on the Strategist agent bounds RAG invocations at the tool layer. A fourth RAG call within the same request is refused before hitting Supabase. See `backend/agent_tools/strategist_tools.py` and `docs/11-PIPELINE-PLAN.md` Phase 1b. |

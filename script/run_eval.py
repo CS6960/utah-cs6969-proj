@@ -83,7 +83,6 @@ PRESET_QUESTIONS = [
     "Am I diversified enough?",
     "Which holdings look strongest?",
     "Where should new cash go?",
-    "What is the operating margin for Nvida?",
 ]
 
 # ---------------------------------------------------------------------------

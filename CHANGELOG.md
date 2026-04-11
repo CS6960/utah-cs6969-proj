@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Strategist-orchestrated agent (`backend/agent_tools/strategist_tools.py`) with typed `EvidenceResponse` contract including non-optional `gaps` and `errors` fields that surface infrastructure failures directly into the Strategist's context
+- Three Strategist tools: `request_filings(scope, tickers)`, `request_prices(tickers, start_date, end_date)`, `request_news(scope, tickers)` (Phase 2 stub)
+- `run_strategist_agent(query)` in `backend/agents.py` returning `(response, tools_called, execution_trace)` — drop-in shape-compatible with `run_agent`
+- `STRATEGIST_AGENT_PROMPT` drafted in `backend/agents.py` with explicit workflow, GAPS/ERRORS acknowledgment contract, noise-ticker allow-list, and 1500-word ceiling
+- Hard caps via LangChain middleware: `ModelCallLimitMiddleware(run_limit=8)`, `ToolCallLimitMiddleware(run_limit=2)` for filings/prices, `run_limit=1` for news
+- `_RAG_COUNTER` ContextVar defense-in-depth RAG ceiling (≤3 per request) re-mitigating the 2026-04-03 Supabase fan-out incident
+- Phase 1b architectural memo at `internal/phase1b_agent_pivot.md` (gitignored) documenting the sequential-pipeline → Strategist-orchestrated pivot
+- Phase 1b section in `docs/11-PIPELINE-PLAN.md`; updated architecture diagrams in `docs/08-AGENTS-TOOLS.md`
 - `backend/_env_bootstrap.py` — import-time `load_dotenv` shim imported by `agents.py`, `portfolio.py`, `stock_prices.py`, and `agent_tools/financial_reports_tools.py` so `backend/venv/bin/python -c "import agents"` works without a `source venv/bin/activate && source .env` preamble
 - CLAUDE.md guidance sections: "Running backend Python and ruff without permission prompts" (use `backend/venv/bin/python` / `backend/venv/bin/ruff` directly) and "Running git in a worktree without permission prompts" (use `git -C <path>` instead of `cd <path> && git`)
 - `get_stock_price_history` retriever tool and `get_price_history_for_symbol(s)` helpers in `backend/stock_prices.py` for date-range daily close queries against Supabase
@@ -34,12 +42,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Gate criteria for each phase transition documented in all three docs
 
 ### Fixed
+- Milestone 2 cash-exclusion bug: `build_portfolio_context()` now reads `data.get("cashBalances")` and renders a `CASH BALANCES:` section. Previously, cash was silently omitted from the Strategist's context, causing percentage-based portfolio math to be systematically wrong (Q2 "Am I diversified?" scored low for this exact reason)
 - SB004: Moved `create_client()` from per-function calls to module-level singletons in `backend/portfolio.py`, `backend/stock_prices.py`, and `backend/agent_tools/financial_reports_tools.py` to prevent connection churn on the free tier
 - SB001: Added `.limit(50)` to unbounded `stock_prices` and `document_tree_nodes` select queries to prevent free-tier statement timeouts
 - SB001: Added `.limit(50)` to `get_latest_close_prices_for_symbols` select in `backend/stock_prices.py` and to `_get_latest_prices_for_symbols` select in `backend/portfolio.py`
 - Retriever had no way to cite day-over-day price moves — historical CSV was seeded but no tool queried it; added `get_stock_price_history` and wired it into the retriever prompt and fallback
 
 ### Changed
+- `/api/agent` now routes through `run_strategist_agent()` instead of the regression-routed `financial_advisor_agent`. Response shape `(result, tools_called, execution_trace)` unchanged so the frontend is unaffected
+- `AGENTS["financial_advisor"]` now points at `strategist_agent`. The `financial_advisor_agent` Python object is retained in `agents.py` for a future Phase 4 cleanup but is unreachable via `/api/agent`
+- `docs/08-SUPABASE-FREE-TIER.md` incident log: 2026-04-03 RAG fan-out entry now cites the Phase 1b `_RAG_COUNTER` + `ToolCallLimitMiddleware` mitigation
 - `/api/agent` now routes through pipeline for default `financial_advisor` role
 - Extracted `extract_tools_called()` helper from `run_agent()` for reuse in pipeline
 - `run_agent()` now returns `(response, tools_called)` tuple instead of just `response`
@@ -79,6 +91,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `==` replaced with strict equality (`===`) for `dayChangePct` null check
 
 ### Removed
+- `backend/pipeline.py` (dead code — zero importers verified; its `EvidencePackage` dataclass was shadowed by the new `EvidenceResponse` type)
+- Q5 "What is the operating margin for Nvida?" from `script/run_eval.py` `PRESET_QUESTIONS` (never had ground truth, always scored 0, trivially satisfied acceptance criteria)
 - Dead code: `buildReply()` and `buildPortfolioReply()` functions (replaced by agent endpoint)
 - Dead code: unused `HoldingRow` component
 
