@@ -1,3 +1,5 @@
+import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
+
 import logging
 import os
 from contextvars import ContextVar
