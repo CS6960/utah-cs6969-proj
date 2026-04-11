@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
-
 import os
 from typing import Any
 
+import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
 from supabase import Client, create_client
 
 _supabase_url = os.getenv("SUPABASE_URL")
@@ -29,11 +28,7 @@ def _normalize_symbols(symbols: list[str]) -> list[str]:
 
 def _get_latest_prices_by_symbol(supabase: Client) -> tuple[str, dict[str, dict[str, Any]]]:
     latest_date_response = (
-        supabase.table("stock_prices")
-        .select("trading_date")
-        .order("trading_date", desc=True)
-        .limit(1)
-        .execute()
+        supabase.table("stock_prices").select("trading_date").order("trading_date", desc=True).limit(1).execute()
     )
     latest_rows = latest_date_response.data or []
 
@@ -65,19 +60,13 @@ def _get_latest_prices_by_symbol(supabase: Client) -> tuple[str, dict[str, dict[
     return str(latest_trading_date), prices_by_symbol
 
 
-def _get_latest_prices_for_symbols(
-    supabase: Client, symbols: list[str]
-) -> tuple[str, dict[str, dict[str, Any]]]:
+def _get_latest_prices_for_symbols(supabase: Client, symbols: list[str]) -> tuple[str, dict[str, dict[str, Any]]]:
     normalized_symbols = _normalize_symbols(symbols)
     if not normalized_symbols:
         return "", {}
 
     latest_trading_date_response = (
-        supabase.table("stock_prices")
-        .select("trading_date")
-        .order("trading_date", desc=True)
-        .limit(1)
-        .execute()
+        supabase.table("stock_prices").select("trading_date").order("trading_date", desc=True).limit(1).execute()
     )
     latest_rows = latest_trading_date_response.data or []
 
@@ -159,10 +148,7 @@ def get_live_portfolio() -> dict[str, Any]:
     latest_trading_date, prices_by_symbol = _get_latest_prices_by_symbol(supabase)
 
     positions_response = (
-        supabase.table("portfolio_positions")
-        .select("stock_symbol,shares,avg_cost")
-        .order("stock_symbol")
-        .execute()
+        supabase.table("portfolio_positions").select("stock_symbol,shares,avg_cost").order("stock_symbol").execute()
     )
     stocks_response = supabase.table("stocks").select("symbol,name,currency").execute()
 
@@ -230,16 +216,10 @@ def get_live_holdings(symbols: list[str]) -> dict[str, Any]:
         .execute()
     )
     position_rows = positions_response.data or []
-    positions_by_symbol = {
-        str(row["stock_symbol"]).upper(): row
-        for row in position_rows
-    }
+    positions_by_symbol = {str(row["stock_symbol"]).upper(): row for row in position_rows}
 
     stocks_response = (
-        supabase.table("stocks")
-        .select("symbol,name,currency")
-        .in_("symbol", normalized_symbols)
-        .execute()
+        supabase.table("stocks").select("symbol,name,currency").in_("symbol", normalized_symbols).execute()
     )
     stock_meta_by_symbol = {
         str(row["symbol"]).upper(): {

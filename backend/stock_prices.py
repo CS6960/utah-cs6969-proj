@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
-
 import os
 from typing import Any
 
+import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
 from supabase import Client, create_client
 
 _supabase_url = os.getenv("SUPABASE_URL")
@@ -31,13 +30,7 @@ def _normalize_price_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _get_latest_trading_date(supabase: Client) -> str:
-    response = (
-        supabase.table("stock_prices")
-        .select("trading_date")
-        .order("trading_date", desc=True)
-        .limit(1)
-        .execute()
-    )
+    response = supabase.table("stock_prices").select("trading_date").order("trading_date", desc=True).limit(1).execute()
     rows = response.data or []
 
     if not rows:
@@ -105,10 +98,7 @@ def get_latest_close_prices_for_symbols(symbols: list[str]) -> dict[str, Any]:
     if not rows:
         raise KeyError(", ".join(normalized_symbols))
 
-    prices_by_symbol = {
-        str(row["stock_symbol"]).upper(): _normalize_price_row(row)
-        for row in rows
-    }
+    prices_by_symbol = {str(row["stock_symbol"]).upper(): _normalize_price_row(row) for row in rows}
     missing = [symbol for symbol in normalized_symbols if symbol not in prices_by_symbol]
     if missing:
         raise KeyError(", ".join(missing))

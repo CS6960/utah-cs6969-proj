@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
-
 import logging
 import os
 from typing import Any
 
 from langchain.tools import tool
 from openai import OpenAI
+
+import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
 from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)

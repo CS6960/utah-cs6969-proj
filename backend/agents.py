@@ -1,5 +1,3 @@
-import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
-
 import logging
 import os
 from contextvars import ContextVar
@@ -10,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
+import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
 from agent_tools.tools import (
     BASE_ADVISOR_TOOLS,
     REPORT_RETRIEVAL_TOOLS,
@@ -75,6 +74,7 @@ def _end_trace(token: object) -> tuple[list[dict[str, Any]], list[str]]:
     _TRACE.reset(token)
     _TOOLS_CALLED.set(None)
     return trace, tools_called
+
 
 financial_reports_retrieval_agent = create_agent(
     model,

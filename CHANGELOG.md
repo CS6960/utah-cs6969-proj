@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `backend/_env_bootstrap.py` — import-time `load_dotenv` shim imported by `agents.py`, `portfolio.py`, `stock_prices.py`, and `agent_tools/financial_reports_tools.py` so `backend/venv/bin/python -c "import agents"` works without a `source venv/bin/activate && source .env` preamble
+- CLAUDE.md guidance sections: "Running backend Python and ruff without permission prompts" (use `backend/venv/bin/python` / `backend/venv/bin/ruff` directly) and "Running git in a worktree without permission prompts" (use `git -C <path>` instead of `cd <path> && git`)
 - `get_stock_price_history` retriever tool and `get_price_history_for_symbol(s)` helpers in `backend/stock_prices.py` for date-range daily close queries against Supabase
 - Pipeline deterministic fallback now batch-fetches daily closes for all holdings in a single Supabase call and emits a `PRICE HISTORY` evidence block with weekly % change
 - Milestone 2 report (`internal/milestone2.tex`) with evaluation framework results, Phase 0/1 comparison, human feedback findings, and news data structure

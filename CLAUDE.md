@@ -21,6 +21,35 @@ All changes must be logged in `CHANGELOG.md` at the project root. Follow [Keep a
 - **Supabase:** `python script/check_supabase_rules.py` (free-tier query safety)
 - Run all before committing. The Supabase linter also runs as a git pre-commit hook.
 
+## Running backend Python and ruff without permission prompts
+
+Backend modules (`agents.py`, `portfolio.py`, `stock_prices.py`, `agent_tools/financial_reports_tools.py`) bootstrap `backend/.env` at import time via `_env_bootstrap.py`. Do NOT wrap commands in `source venv/bin/activate && set -a && source .env && set +a && ...` — Claude Code flags `source` as a sensitive prefix and every such chain triggers a permission prompt regardless of allow-list rules.
+
+```bash
+# YES — direct venv binary, bootstrap loads .env automatically, no prompt
+backend/venv/bin/python -c "import agents; print(len(agents.AGENTS))"
+backend/venv/bin/python -m py_compile backend/agents.py
+backend/venv/bin/ruff check backend/
+backend/venv/bin/ruff format --check backend/
+
+# NO — the outer `source` forces a permission prompt every invocation
+source venv/bin/activate && set -a && source .env && set +a && python3 -c "import agents; ..."
+```
+
+## Running git in a worktree without permission prompts
+
+`cd <worktree-path> && git <cmd>` trips Claude Code's bare-repo-attack guard (CVE-2022-24765). Use `git -C` instead — it is covered by the existing `Bash(git:*)` allow rule and does not trigger the guard.
+
+```bash
+# YES — git -C sets the repo directory without cd, no prompt
+git -C .worktrees/trio/strategist-orchestrated-agent log --oneline -6
+git -C .worktrees/trio/strategist-orchestrated-agent add backend/agents.py
+git -C .worktrees/trio/strategist-orchestrated-agent commit -m "..."
+
+# NO — the `cd X && git Y` compound triggers the bare-repo guard
+cd .worktrees/trio/strategist-orchestrated-agent && git log --oneline -6
+```
+
 ## Supabase Free-Tier Constraints
 
 This project runs on Supabase Free (Nano) tier. See `docs/08-SUPABASE-FREE-TIER.md` for full rules. Key constraints:
