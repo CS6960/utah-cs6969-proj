@@ -4,10 +4,12 @@ from contextvars import ContextVar
 from typing import Any
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
+from agent_tools.strategist_tools import STRATEGIST_TOOLS, build_portfolio_context
 from agent_tools.tools import (
     BASE_ADVISOR_TOOLS,
     REPORT_RETRIEVAL_TOOLS,
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar("agent_trace", default=None)
 _TOOLS_CALLED: ContextVar[list[str] | None] = ContextVar("tools_called_trace", default=None)
+_RAG_COUNTER: ContextVar[int] = ContextVar("rag_counter", default=0)
 
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL")
@@ -49,6 +52,7 @@ def _trace(event_type: str, **payload: Any) -> None:
 
 def _start_trace(role: str, query: str) -> object:
     _TOOLS_CALLED.set([])
+    _RAG_COUNTER.set(0)
     return _TRACE.set(
         [
             {
@@ -72,7 +76,9 @@ def _end_trace(token: object) -> tuple[list[dict[str, Any]], list[str]]:
     tools_called = _TOOLS_CALLED.get() or []
     _TRACE.reset(token)
     _TOOLS_CALLED.set(None)
+    _RAG_COUNTER.set(0)
     return trace, tools_called
+
 
 financial_reports_retrieval_agent = create_agent(
     model,
@@ -260,8 +266,55 @@ retriever_agent = create_agent(
     system_prompt=RETRIEVER_SYSTEM_PROMPT,
 )
 
+STRATEGIST_AGENT_PROMPT = """You are Meridian, a financial strategist agent for an 8-holding equity portfolio. You have been pre-loaded with the user's current portfolio holdings and cash position in the message above. You orchestrate evidence retrieval through three tools and synthesize the result into an actionable analysis.
+
+WORKFLOW (you MUST follow this order):
+
+1. Read the user's question.
+2. Decompose it into evidence needs. Examples:
+   - "Biggest portfolio risk?" -> need recent price history + filing risk factors for tech holdings
+   - "Am I diversified?" -> need price history + portfolio composition (already have it)
+   - "Which holdings look strongest?" -> need price history + filing MD&A for outperformers
+3. Call AT LEAST ONE of `request_filings(scope, tickers)` or `request_prices(tickers, start_date, end_date)` before producing any analysis. Skipping retrieval is not allowed for portfolio-level questions.
+4. Inspect the markdown-formatted tool return. EVERY tool return contains GAPS and ERRORS sections. If GAPS is non-empty, the tool found nothing for the listed items. If ERRORS is non-empty, the tool failed for the listed reasons. You MUST acknowledge both in your final response - do not synthesize claims about items in GAPS or ERRORS.
+5. If your evidence is incomplete and you have remaining tool budget, you may call a tool one more time with a refined scope. Each tool may be called at most twice per query (request_news only once - it is a Phase 2 stub and will always return a gap).
+6. If `request_news` returns a gap containing "not yet wired", DO NOT call request_news again. News data is unavailable in Phase 1b. Skip news-dependent reasoning.
+7. Once you have gathered evidence, synthesize a final analysis containing:
+   - Specific evidence-grounded claims (cite filings or price moves by date)
+   - Explicit acknowledgment of any gaps and errors from your tool returns
+   - Directional recommendations (add/hold/trim/avoid) where the evidence supports them
+   - A clear statement when evidence is insufficient - DO NOT FABRICATE
+
+TOOL DESCRIPTIONS:
+
+- request_filings(scope: str, tickers: list[str])
+    Retrieve SEC 10-K filing excerpts for the given tickers. The `scope` argument is a natural-language description of what aspect of the filings you want (e.g., "risk factors", "geopolitical exposure", "operating margin trends"). It is used as the embedding query. Returns a markdown block with FILINGS, GAPS, and ERRORS sections.
+
+- request_prices(tickers: list[str], start_date: str = "", end_date: str = "")
+    Retrieve daily closing prices for the given tickers in the date range. If dates are omitted, returns all available history. Returns a markdown block with PRICE_HISTORY, GAPS, and ERRORS sections.
+
+- request_news(scope: str, tickers: list[str])
+    PHASE 2 STUB. Currently returns an empty result with gap "news corpus not yet wired". Do not call this more than once per query.
+
+CONSTRAINTS:
+- Do not invent stock prices, percentages, or filing claims. If the evidence does not contain them, say so plainly.
+- Do not cite tickers that are not in the portfolio. The portfolio is exactly: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. Mentioning TSLA, PFE, META, NFLX, etc. is a noise citation and reduces eval quality.
+- Keep the final response under 1500 words. Be analytical, concrete, and actionable."""
+
+strategist_agent = create_agent(
+    model,
+    tools=STRATEGIST_TOOLS,
+    system_prompt=STRATEGIST_AGENT_PROMPT,
+    middleware=[
+        ModelCallLimitMiddleware(run_limit=8, exit_behavior="end"),
+        ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2, exit_behavior="continue"),
+        ToolCallLimitMiddleware(tool_name="request_prices", run_limit=2, exit_behavior="continue"),
+        ToolCallLimitMiddleware(tool_name="request_news", run_limit=1, exit_behavior="continue"),
+    ],
+)
+
 AGENTS = {
-    "financial_advisor": financial_advisor_agent,
+    "financial_advisor": strategist_agent,
     "financial_reports_retrieval_agent": financial_reports_retrieval_agent,
 }
 
@@ -297,7 +350,7 @@ def run_agent(query: str, role: str = "financial_advisor"):
     try:
         result = agent.invoke({"messages": [HumanMessage(content=query)]})
         tool_calls = extract_tool_call_details(result["messages"])
-        tools_called = [tool_call["name"] for tool_call in tool_calls]
+        tools_called = [tool_call["name"] for tool_call in tool_calls]  # noqa: F841
         response = result["messages"][-1].content
         for tool_call in tool_calls:
             _append_tools_called(tool_call["name"])
@@ -327,5 +380,45 @@ def run_agent(query: str, role: str = "financial_advisor"):
         return response, aggregated_tools_called, trace
     except Exception as exc:
         _trace("agent_run_failed", role=role, error=repr(exc))
+        _end_trace(token)
+        raise
+
+
+def run_strategist_agent(query: str) -> tuple[str, list[str], list[dict[str, Any]]]:
+    """
+    Run the Strategist agent for a user query. Returns
+    (response_text, tools_called, execution_trace) — same shape as run_agent
+    so /api/agent's tuple unpacking remains valid.
+    """
+    token = _start_trace("strategist", query)
+    try:
+        portfolio_context = build_portfolio_context()
+        human_content = f"PORTFOLIO CONTEXT:\n{portfolio_context}\n\nUSER QUESTION: {query}"
+        result = strategist_agent.invoke({"messages": [HumanMessage(content=human_content)]})
+
+        tool_call_details = extract_tool_call_details(result["messages"])
+        for tool_call in tool_call_details:
+            _trace(
+                "agent_tool_selection",
+                role="strategist",
+                tool=tool_call["name"],
+                args=tool_call["args"],
+                args_preview=tool_call["args_preview"],
+            )
+
+        response = result["messages"][-1].content
+        trace, aggregated_tools_called = _end_trace(token)
+        trace.append(
+            {
+                "type": "agent_run_completed",
+                "role": "strategist",
+                "tools_called": aggregated_tools_called,
+                "response_preview": _preview(response),
+            }
+        )
+        logger.info("agent_trace %s", trace[-1])
+        return response, aggregated_tools_called, trace
+    except Exception as exc:
+        _trace("agent_run_failed", role="strategist", error=repr(exc))
         _end_trace(token)
         raise

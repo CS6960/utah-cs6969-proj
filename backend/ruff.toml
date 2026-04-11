@@ -23,6 +23,7 @@ ignore = [
 [lint.per-file-ignores]
 "agent_tools/*.py" = ["S110"]  # allow bare except pass in tool handlers
 "app.py" = ["S104"]      # binding to 0.0.0.0 is intentional for server
+"agents.py" = ["E501"]   # STRATEGIST_AGENT_PROMPT contains verbatim spec text that cannot be line-wrapped
 
 [format]
 quote-style = "double"
