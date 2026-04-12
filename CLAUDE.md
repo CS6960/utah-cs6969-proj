@@ -163,3 +163,37 @@ These docs define the target system (including a backend API and relational DB) 
 - **Reconstruction**: A rebalancing event within a strategy where positions are rotated in/out — not a new strategy
 - **Manager teams**: Alpha Equity, Quant Systems, Macro Themes — each owns multiple strategies
 - **Hierarchy**: Portfolio → Manager Team → Strategy → Position(s)
+
+
+## State Layer
+
+Agents in this project write session state to a shared Supabase table so
+that progress is visible across devices and agents (e.g., Aegis in the vault
+can see what happened here).
+
+- **Skill:** `.claude/skills/state-layer/SKILL.md` — read before writing
+- **project_ref:** `cs6960`
+- **host:** `t430-scout-v1`
+- **Supabase project_id:** `ymqdniinxqipgmxjqypq`
+
+At session start, read recent events:
+```sql
+SELECT id, content, event_type, created_at
+FROM agent_state
+WHERE project_ref = 'cs6960' AND created_at > now() - interval '7 days'
+ORDER BY created_at DESC LIMIT 10;
+```
+
+At session end (or when the user says "save"/"done"), write a session_complete sentinel:
+```sql
+INSERT INTO agent_state (tier, agent, host, session_id, content, event_type, project_ref)
+VALUES ('event', '<your-agent-name>', 't430-scout-v1', '<descriptive-session-id>',
+  'Session complete. Summary: <one-line>', 'session_complete', 'cs6960');
+```
+
+During work, write events for significant milestones (features completed,
+bugs fixed, decisions made) using event_type values: `task-completed`,
+`decision-made`, `error`, `generic`.
+
+If Supabase is unreachable, continue working — never abort because state
+writes failed. Note the gap in your output.
