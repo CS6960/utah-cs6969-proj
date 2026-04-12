@@ -283,8 +283,9 @@ WORKFLOW (you MUST follow this order):
 3. Call `request_news(scope, tickers)` FIRST with ALL portfolio tickers to capture the macro environment. Use a broad scope like "market risks geopolitical events sector catalysts". The results include BOTH relevant and noise articles. You MUST evaluate each article's relevance — do NOT cite articles about sports, agriculture, space, or non-portfolio tickers. Noise citations reduce eval quality.
 4. Call `request_prices(tickers, start_date, end_date)` for all portfolio tickers.
 5. Call `request_filings(scope, tickers)` with a scope informed by what the news revealed (e.g., if news mentions geopolitical risk, scope filings to "geopolitical exposure supply chain risk").
-6. Inspect EVERY tool return for GAPS and ERRORS sections. You MUST acknowledge both in your final response — do not synthesize claims about items in GAPS or ERRORS.
-7. If evidence is incomplete and you have remaining budget, call a tool one more time with refined scope. Each tool may be called at most twice.
+6. If news revealed macro themes with cross-sector implications (geopolitical events, commodity shocks, policy changes), call `request_graph(scope, entities, hops)` to find causal connections. Use entity names from the news (e.g., "Iran conflict", "oil price surge", "AAPL", "XOM"). This surfaces pre-extracted causal chains like "Iran conflict --[threatens]--> tech sector".
+7. Inspect EVERY tool return for GAPS and ERRORS sections. You MUST acknowledge both in your final response — do not synthesize claims about items in GAPS or ERRORS.
+8. If evidence is incomplete and you have remaining budget, call a tool one more time with refined scope. Each tool may be called at most twice.
 
 SYNTHESIS — Cross-Sector Causal Reasoning (CRITICAL):
 When news reveals a macro event (geopolitical crisis, commodity shock, regulatory shift), you MUST:
@@ -305,20 +306,26 @@ TOOL DESCRIPTIONS:
 - request_filings(scope: str, tickers: list[str])
     Retrieve SEC 10-K filing excerpts for the given tickers. The `scope` argument is a natural-language description used as the embedding query (e.g., "risk factors", "geopolitical exposure"). Returns FILINGS, GAPS, and ERRORS sections.
 
+- request_graph(scope: str, entities: list[str], hops: int = 1)
+    Traverse the entity-relationship graph to find causal connections between companies, sectors, commodities, and macro events. Returns GRAPH_CONNECTIONS edges showing relationships (e.g., "Iran conflict --[threatens]--> AAPL"), plus GAPS and ERRORS. Use after reading news to map cross-sector causal chains. hops=1 for direct connections, hops=2 for extended traversal.
+
 CONSTRAINTS:
 - Do not invent stock prices, percentages, or filing claims. If the evidence does not contain them, say so plainly.
 - Do not cite tickers that are not in the portfolio. The portfolio is exactly: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. Mentioning TSLA, PFE, META, NFLX, etc. is a noise citation and reduces eval quality.
-- Keep the final response under 1500 words. Be analytical, concrete, and actionable."""
+- Keep the final response under 1500 words. Be analytical, concrete, and actionable.
+- When evaluating holding strength ("which holdings look strongest"), weigh both short-term price action AND overall position P&L (current price vs average cost basis from portfolio context). Do not rely solely on 1-week performance.
+- When recommending cash deployment ("where should new cash go"), consider whether new positions outside the current portfolio would better address identified risks. If recommending only existing holdings, explain why staying in-portfolio is preferred over diversifying into new names."""
 
 strategist_agent = create_agent(
     model,
     tools=STRATEGIST_TOOLS,
     system_prompt=STRATEGIST_AGENT_PROMPT,
     middleware=[
-        ModelCallLimitMiddleware(run_limit=8, exit_behavior="end"),
+        ModelCallLimitMiddleware(run_limit=12, exit_behavior="end"),
         ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2, exit_behavior="continue"),
         ToolCallLimitMiddleware(tool_name="request_prices", run_limit=2, exit_behavior="continue"),
         ToolCallLimitMiddleware(tool_name="request_news", run_limit=2, exit_behavior="continue"),
+        ToolCallLimitMiddleware(tool_name="request_graph", run_limit=2, exit_behavior="continue"),
     ],
 )
 

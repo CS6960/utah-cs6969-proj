@@ -22,6 +22,7 @@ from typing import Any
 from langchain_core.tools import tool
 
 from agent_tools.financial_reports_tools import retrieve_embedded_financial_report_info
+from agent_tools.graph_tools import traverse_entity_graph
 from portfolio import get_live_portfolio
 from stock_prices import get_price_history_for_symbols
 
@@ -151,6 +152,21 @@ def serialize_for_llm(evidence: EvidenceResponse) -> str:
                     lines.append(f"     {body_line}")
     else:
         lines.append("NEWS: (none)")
+    lines.append("")
+
+    if evidence.graph_connections:
+        capped = evidence.graph_connections[:20]
+        lines.append(f"GRAPH_CONNECTIONS ({len(capped)} edges):")
+        for i, edge in enumerate(capped, start=1):
+            src = edge.get("source_entity", "?")
+            rel = edge.get("relationship", "?")
+            tgt = edge.get("target_entity", "?")
+            ev = edge.get("evidence", "")
+            lines.append(f"  {i}. {src} --[{rel}]--> {tgt}")
+            if ev:
+                lines.append(f"     (evidence: {ev})")
+    else:
+        lines.append("GRAPH_CONNECTIONS: (none)")
     lines.append("")
 
     lines.append("GAPS:")
@@ -363,4 +379,40 @@ def request_news(scope: str, tickers: list[str]) -> str:
     return serialize_for_llm(evidence)
 
 
-STRATEGIST_TOOLS = [request_filings, request_prices, request_news]
+@tool
+def request_graph(scope: str, entities: list[str], hops: int = 1) -> str:
+    """
+    Traverse the entity-relationship graph to find causal connections
+    between entities (companies, sectors, commodities, events).
+    `scope` describes why you need these connections.
+    `entities` are the starting entity names to search from.
+    `hops` controls traversal depth (1 = direct edges, 2 = one extra hop).
+    Returns a markdown block with GRAPH_CONNECTIONS, GAPS, and ERRORS sections.
+    """
+    from agents import _append_tools_called
+
+    evidence = EvidenceResponse(scope_request=f"graph {entities} : {scope}")
+
+    try:
+        _append_tools_called("request_graph", "traverse_entity_graph")
+
+        normalized = [e.strip() for e in entities if e and e.strip()]
+        if not normalized:
+            evidence.gaps.append("no entities provided to request_graph")
+            return serialize_for_llm(evidence)
+
+        edges = traverse_entity_graph(normalized, hops=hops)
+
+        if not edges:
+            evidence.gaps.append(f"no graph connections found for entities {normalized}")
+        else:
+            evidence.graph_connections = edges
+
+    except Exception as exc:
+        logger.exception("request_graph failed: %s", exc)
+        evidence.errors.append(f"request_graph exception: {type(exc).__name__}: {exc}")
+
+    return serialize_for_llm(evidence)
+
+
+STRATEGIST_TOOLS = [request_filings, request_prices, request_news, request_graph]
