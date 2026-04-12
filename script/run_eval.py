@@ -21,6 +21,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import time
 
 import requests
@@ -33,6 +34,8 @@ load_dotenv(Path(__file__).resolve().parent.parent / "backend" / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
+
+DENVER_TZ = ZoneInfo("America/Denver")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -331,7 +334,7 @@ def score_response(question: str, response: str) -> dict:
 
 def _format_dump(stage: str, backend_url: str, results: list[dict]) -> str:
     """Render eval results as a human-readable markdown transcript."""
-    started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    started = datetime.now(DENVER_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     lines = [
         f"# Eval run — stage={stage}",
         "",
@@ -391,7 +394,7 @@ def _resolve_dump_path(raw: str | None, stage: str) -> Path | None:
         return None
     repo_root = Path(__file__).resolve().parent.parent
     if raw == "":
-        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now(DENVER_TZ).strftime("%Y%m%d-%H%M%S")
         return repo_root / "internal" / f"eval_{stage}_{ts}.md"
     path = Path(raw)
     if not path.is_absolute():

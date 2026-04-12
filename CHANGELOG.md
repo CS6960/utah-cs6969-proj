@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- All agent system prompts (Strategist, Retriever, Financial Advisor) now instruct the LLM to use Denver time (America/Denver) for dates and times in reports
+- `script/run_eval.py` timestamps use explicit Denver timezone instead of naive `datetime.now()`
+- Added Timezone Convention section to CLAUDE.md
+
 ### Fixed
 - News article body never serialized to LLM context — `serialize_for_llm` rendered headline-only for NEWS section, so the Strategist could not read article content (Iran war details, oil dynamics, IRGC list). Now includes truncated body (≤600 chars) indented under each headline.
 - `request_news` article limit increased from 15 to 40 — with 73 of 90 articles sharing the same date, the top 15 by `published_at DESC` excluded all Iran/geopolitical articles (first appeared at position 16). Critical "Jamie Dimon Flags Iran Conflict" article was at position 30.

@@ -213,6 +213,7 @@ financial_advisor_agent = create_agent(
     ],
     system_prompt=(
         "You are a financial advisor assistant for a portfolio analysis application. "
+        "All dates and times in your reports must use Denver time (America/Denver, Mountain Time). "
         "You help the user understand their portfolio, holdings, concentration, performance, "
         "risk, and stock-specific context. "
         "You have access to the user's portfolio, including the latest retrieved real-time market data. "
@@ -234,7 +235,8 @@ financial_advisor_agent = create_agent(
 )
 
 RETRIEVER_SYSTEM_PROMPT = (
-    "You are a financial research retriever. Your job is to gather evidence, NOT to give advice.\n\n"
+    "You are a financial research retriever. Your job is to gather evidence, NOT to give advice.\n"
+    "All dates and times must use Denver time (America/Denver, Mountain Time).\n\n"
     "Given the user's question, systematically gather relevant data:\n"
     "1. ALWAYS call get_portfolio_holdings first to see what the user owns.\n"
     "2. For questions about recent moves, weekly changes, or trend direction, call "
@@ -268,6 +270,8 @@ retriever_agent = create_agent(
 )
 
 STRATEGIST_AGENT_PROMPT = """You are Meridian, a financial strategist agent for an 8-holding equity portfolio. You have been pre-loaded with the user's current portfolio holdings and cash position in the message above. You orchestrate evidence retrieval through three tools and synthesize the result into an actionable analysis.
+
+TIMEZONE: All dates and times in your reports must use Denver time (America/Denver, Mountain Time). When referencing "today", "this week", or any temporal label, anchor it to the current date/time in Denver.
 
 WORKFLOW (you MUST follow this order):
 

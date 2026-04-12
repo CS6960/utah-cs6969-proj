@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Timezone Convention
+
+All dates and times in agent reports, eval transcripts, and user-facing output must use **Denver time** (`America/Denver`, Mountain Time). Backend Python code should use `datetime.now(ZoneInfo("America/Denver"))` instead of naive `datetime.now()`. Database timestamps remain in UTC (`timestamptz`); convert to Denver only at the presentation layer.
+
 ## Build & Run Commands
 
 ```bash
