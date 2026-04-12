@@ -35,6 +35,7 @@ DATA_TOOLS = {
     "retrieve_embedded_financial_report_info",
     "get_price_history_for_symbols",
     "get_stock_price_history",
+    "traverse_entity_graph",
 }
 
 # Distinctive Alphabet risk-factor phrases used by run_m_rag().

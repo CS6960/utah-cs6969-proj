@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Phase 3 entity-relationship graph: `entity_relationships` Supabase table (migration 003) storing pre-extracted causal edges from the news corpus
+- Graph extraction script (`script/build_graph.py`) using LLM to extract entity-relationship triples from relevant news articles, with `--dry-run` and `--validate` flags
+- `traverse_entity_graph()` in `backend/agent_tools/graph_tools.py` — 2-query hop pattern (SB003-compliant) for graph traversal at inference time
+- `request_graph` Strategist tool wrapping `traverse_entity_graph` with GRAPH_CONNECTIONS serialization in `serialize_for_llm`
+- `ToolCallLimitMiddleware(tool_name="request_graph", run_limit=2)` middleware for the Strategist agent
+
+### Changed
+- `ModelCallLimitMiddleware(run_limit=12)` (was 8) to accommodate the additional request_graph tool
+- `STRATEGIST_AGENT_PROMPT` updated with request_graph in WORKFLOW and TOOL DESCRIPTIONS sections
+- Smoke test `DATA_TOOLS` set now includes `traverse_entity_graph`
+
+### Fixed
+- Q3 eval gap: Strategist prompt now instructs weighing both short-term price action AND overall position P&L (current price vs average cost basis)
+- Q4 eval gap: Strategist prompt now instructs considering new positions outside current portfolio when recommending cash deployment
+
 ### Changed
 - All agent system prompts (Strategist, Retriever, Financial Advisor) now instruct the LLM to use Denver time (America/Denver) for dates and times in reports
 - `script/run_eval.py` timestamps use explicit Denver timezone instead of naive `datetime.now()`
