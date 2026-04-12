@@ -50,6 +50,33 @@ git -C .worktrees/trio/strategist-orchestrated-agent commit -m "..."
 cd .worktrees/trio/strategist-orchestrated-agent && git log --oneline -6
 ```
 
+## Avoiding permission prompts in shell commands
+
+Two shell patterns always trigger permission prompts regardless of allow-list rules:
+
+1. **Multi-line `python -c "..."` bodies** — Literal newlines inside the quoted `-c` argument break the validator's shell lexer. Collapse to a single `;`-joined line.
+
+```bash
+# YES — single line, no prompt
+backend/venv/bin/python -c "import sys; print('Python:', sys.version)"
+
+# NO — multi-line body always prompts
+backend/venv/bin/python -c "
+import sys
+print('Python:', sys.version)
+"
+```
+
+2. **Process substitution `<(...)`** — The validator cannot trace commands inside `<()` subshells. Use temp files or separate tool calls instead.
+
+```bash
+# YES — temp files, no prompt
+grep -A10 'PATTERN' file_a.py | head -12 > /tmp/_t1.txt && grep -A10 'PATTERN' file_b.py | head -12 > /tmp/_t2.txt && diff /tmp/_t1.txt /tmp/_t2.txt
+
+# NO — process substitution always prompts
+diff <(grep -A10 'PATTERN' file_a.py | head -12) <(grep -A10 'PATTERN' file_b.py | head -12)
+```
+
 ## Supabase Free-Tier Constraints
 
 This project runs on Supabase Free (Nano) tier. See `docs/08-SUPABASE-FREE-TIER.md` for full rules. Key constraints:

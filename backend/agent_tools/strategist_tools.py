@@ -146,6 +146,9 @@ def serialize_for_llm(evidence: EvidenceResponse) -> str:
         lines.append(f"NEWS ({len(evidence.news)} articles):")
         for i, n in enumerate(evidence.news, start=1):
             lines.append(f"  {i}. [{n.ticker} | {n.source} | {n.published_at}] {n.headline}")
+            if n.body:
+                for body_line in n.body.strip().split("\n"):
+                    lines.append(f"     {body_line}")
     else:
         lines.append("NEWS: (none)")
     lines.append("")
@@ -337,7 +340,7 @@ def request_news(scope: str, tickers: list[str]) -> str:
             evidence.gaps.append("no tickers provided to request_news")
             return serialize_for_llm(evidence)
 
-        articles = query_news_articles(normalized, limit=15)
+        articles = query_news_articles(normalized, limit=40)
 
         if not articles:
             evidence.gaps.append(f"no news articles found for tickers {normalized}")

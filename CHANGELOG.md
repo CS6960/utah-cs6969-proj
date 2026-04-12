@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- News article body never serialized to LLM context — `serialize_for_llm` rendered headline-only for NEWS section, so the Strategist could not read article content (Iran war details, oil dynamics, IRGC list). Now includes truncated body (≤600 chars) indented under each headline.
+- `request_news` article limit increased from 15 to 40 — with 73 of 90 articles sharing the same date, the top 15 by `published_at DESC` excluded all Iran/geopolitical articles (first appeared at position 16). Critical "Jamie Dimon Flags Iran Conflict" article was at position 30.
+
+### Changed
+- `STRATEGIST_AGENT_PROMPT` rewritten to close Phase 2 eval gaps (G=2.75→?, R=1.25→?):
+  - `request_news` now mandatory and called FIRST (was optional step 6; Q1/Q2 skipped it entirely)
+  - Added "SYNTHESIS — Cross-Sector Causal Reasoning" section requiring the agent to trace macro events through multiple holdings, identify inverse dynamics, and connect price moves to specific news catalysts
+  - Tool call order: news → prices → filings (news-informed filing scope)
+  - `request_news` tool description updated to mention article summaries (not just headlines)
+
 ### Added
 - Strategist-orchestrated agent (`backend/agent_tools/strategist_tools.py`) with typed `EvidenceResponse` contract including non-optional `gaps` and `errors` fields that surface infrastructure failures directly into the Strategist's context
 - Three Strategist tools: `request_filings(scope, tickers)`, `request_prices(tickers, start_date, end_date)`, `request_news(scope, tickers)`
