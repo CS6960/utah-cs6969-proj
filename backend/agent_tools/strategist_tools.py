@@ -203,84 +203,58 @@ def request_filings(scope: str, tickers: list[str]) -> str:
             evidence.gaps.append("no tickers provided to request_filings")
             return serialize_for_llm(evidence)
 
-        # The underlying tool accepts a query + optional file_title filter.
-        # We call it once with scope as query; filter by ticker client-side
-        # because `file_title` is free-text (e.g., "Apple Inc. 10-K FY2025")
-        # and doesn't match a ticker directly.
-        raw = retrieve_embedded_financial_report_info.invoke(
-            {
-                "query": scope,
-                "top_k": 8,  # fetch a few more so client-side ticker filter has room
-            }
-        )
-
-        if isinstance(raw, dict) and raw.get("error"):
-            evidence.errors.append(str(raw["error"]))
-            return serialize_for_llm(evidence)
-
-        matches: list[Any] = []
-        if isinstance(raw, dict):
-            matches = raw.get("matches") or []
-
-        # Client-side ticker filter: keep excerpts whose file_title mentions
-        # any of the requested tickers OR the ticker's known company name.
-        # Fall back to including all matches if the filter drops everything.
-        ticker_aliases: dict[str, list[str]] = {
-            "AAPL": ["AAPL", "Apple"],
-            "MSFT": ["MSFT", "Microsoft"],
-            "JPM": ["JPM", "JPMorgan", "JPMorgan Chase"],
-            "NVDA": ["NVDA", "NVIDIA", "Nvidia"],
-            "AMZN": ["AMZN", "Amazon"],
-            "GOOGL": ["GOOGL", "Alphabet", "Google"],
-            "LLY": ["LLY", "Eli Lilly", "Lilly"],
-            "XOM": ["XOM", "Exxon", "ExxonMobil", "Exxon Mobil"],
+        ticker_file_titles: dict[str, str] = {
+            "AAPL": "Apple Inc. 10-K FY2025",
+            "MSFT": "Microsoft Corporation 10-K FY2025",
+            "GOOGL": "Alphabet Inc. 10-K FY2025",
+            "AMZN": "Amazon.com, Inc. 10-K FY2025",
+            "NVDA": "NVIDIA Corporation 10-K FY2025",
+            "LLY": "Eli Lilly and Company 10-K FY2025",
+            "JPM": "JPMorgan Chase & Co. 10-K FY2025",
+            "XOM": "Exxon Mobil Corporation 10-K FY2025",
         }
 
-        wanted_aliases: list[str] = []
+        # Per-ticker RPC calls: each ticker gets its own top-K pool so every
+        # requested ticker is guaranteed at least its best-matching chunks.
+        # The old approach (single unfiltered top_k=8) caused winner-takes-all
+        # bias where 3-5 tickers dominated all 8 slots.
+        per_ticker_k = max(1, 5 // max(len(normalized_tickers), 1))
+        per_ticker_k = min(per_ticker_k, 3)
+
         for t in normalized_tickers:
-            wanted_aliases.extend(ticker_aliases.get(t, [t]))
+            ft_filter = ticker_file_titles.get(t, "")
 
-        filtered = []
-        for m in matches:
-            ft = (m.get("file_title") or "") + " " + (m.get("title") or "")
-            if any(alias.lower() in ft.lower() for alias in wanted_aliases):
-                filtered.append(m)
-
-        # If the filter removed everything, keep the raw matches so the
-        # Strategist gets something to reason about — but flag a gap.
-        if not filtered and matches:
-            evidence.gaps.append(
-                f"no filings matched requested tickers {normalized_tickers} — returning unfiltered top matches"
+            raw = retrieve_embedded_financial_report_info.invoke(
+                {
+                    "query": scope,
+                    "top_k": per_ticker_k,
+                    "file_title": ft_filter,
+                }
             )
-            filtered = matches
 
-        if not filtered:
-            evidence.gaps.append(f"no filings found for scope '{scope}' among tickers {normalized_tickers}")
+            ticker_matches: list[Any] = []
+            if isinstance(raw, dict):
+                if raw.get("error"):
+                    evidence.gaps.append(f"no filing excerpt for {t}: {raw['error']}")
+                    continue
+                ticker_matches = raw.get("matches") or []
 
-        for m in filtered[:5]:
-            text = m.get("text") or ""
-            excerpt = text[:800]
-            evidence.filings.append(
-                FilingExcerpt(
-                    title=str(m.get("title") or ""),
-                    file_title=str(m.get("file_title") or ""),
-                    text=excerpt,
-                    depth=int(m.get("depth") or 0),
-                    score=float(m.get("score") or 0.0),
+            if not ticker_matches:
+                evidence.gaps.append(f"no filing excerpt for {t} in this retrieval")
+                continue
+
+            for m in ticker_matches:
+                text = m.get("text") or ""
+                excerpt = text[:800]
+                evidence.filings.append(
+                    FilingExcerpt(
+                        title=str(m.get("title") or ""),
+                        file_title=str(m.get("file_title") or ""),
+                        text=excerpt,
+                        depth=int(m.get("depth") or 0),
+                        score=float(m.get("score") or 0.0),
+                    )
                 )
-            )
-
-        # Detect per-ticker gaps
-        tickers_seen: set[str] = set()
-        for f in evidence.filings:
-            for t in normalized_tickers:
-                for alias in ticker_aliases.get(t, [t]):
-                    if alias.lower() in (f.file_title + " " + f.title).lower():
-                        tickers_seen.add(t)
-                        break
-        missing = [t for t in normalized_tickers if t not in tickers_seen]
-        for t in missing:
-            evidence.gaps.append(f"no filing excerpt for {t} in this retrieval")
 
     except Exception as exc:
         logger.exception("request_filings failed: %s", exc)
