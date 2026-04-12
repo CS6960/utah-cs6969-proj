@@ -7,10 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - Strategist-orchestrated agent (`backend/agent_tools/strategist_tools.py`) with typed `EvidenceResponse` contract including non-optional `gaps` and `errors` fields that surface infrastructure failures directly into the Strategist's context
-- Three Strategist tools: `request_filings(scope, tickers)`, `request_prices(tickers, start_date, end_date)`, `request_news(scope, tickers)` (Phase 2 stub)
+- Three Strategist tools: `request_filings(scope, tickers)`, `request_prices(tickers, start_date, end_date)`, `request_news(scope, tickers)`
 - `run_strategist_agent(query)` in `backend/agents.py` returning `(response, tools_called, execution_trace)` — drop-in shape-compatible with `run_agent`
 - `STRATEGIST_AGENT_PROMPT` drafted in `backend/agents.py` with explicit workflow, GAPS/ERRORS acknowledgment contract, noise-ticker allow-list, and 1500-word ceiling
-- Hard caps via LangChain middleware: `ModelCallLimitMiddleware(run_limit=8)`, `ToolCallLimitMiddleware(run_limit=2)` for filings/prices, `run_limit=1` for news
+- Real `request_news` tool (`backend/agent_tools/news_tools.py`) backed by `news_articles` Supabase table (90 articles, 80 relevant + 10 noise). Does NOT filter by `relevant` — agent must demonstrate noise filtering. `request_news` run_limit raised from 1 to 2. Strategist prompt updated to instruct noise-aware citation.
+- Hard caps via LangChain middleware: `ModelCallLimitMiddleware(run_limit=8)`, `ToolCallLimitMiddleware(run_limit=2)` for filings/prices/news
 - `_RAG_COUNTER` ContextVar defense-in-depth RAG ceiling (≤3 per request) re-mitigating the 2026-04-03 Supabase fan-out incident
 - Phase 1b architectural memo at `internal/phase1b_agent_pivot.md` (gitignored) documenting the sequential-pipeline → Strategist-orchestrated pivot
 - Phase 1b section in `docs/11-PIPELINE-PLAN.md`; updated architecture diagrams in `docs/08-AGENTS-TOOLS.md`

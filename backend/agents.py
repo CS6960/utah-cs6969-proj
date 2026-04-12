@@ -278,8 +278,8 @@ WORKFLOW (you MUST follow this order):
    - "Which holdings look strongest?" -> need price history + filing MD&A for outperformers
 3. Call AT LEAST ONE of `request_filings(scope, tickers)` or `request_prices(tickers, start_date, end_date)` before producing any analysis. Skipping retrieval is not allowed for portfolio-level questions.
 4. Inspect the markdown-formatted tool return. EVERY tool return contains GAPS and ERRORS sections. If GAPS is non-empty, the tool found nothing for the listed items. If ERRORS is non-empty, the tool failed for the listed reasons. You MUST acknowledge both in your final response - do not synthesize claims about items in GAPS or ERRORS.
-5. If your evidence is incomplete and you have remaining tool budget, you may call a tool one more time with a refined scope. Each tool may be called at most twice per query (request_news only once - it is a Phase 2 stub and will always return a gap).
-6. If `request_news` returns a gap containing "not yet wired", DO NOT call request_news again. News data is unavailable in Phase 1b. Skip news-dependent reasoning.
+5. If your evidence is incomplete and you have remaining tool budget, you may call a tool one more time with a refined scope. Each tool may be called at most twice per query (request_news up to twice).
+6. Call `request_news(scope, tickers)` to get recent news articles. The results include BOTH relevant and noise articles (sports, unrelated industries, non-portfolio tickers). You MUST evaluate each article's relevance before citing it — do NOT cite articles about topics unrelated to the portfolio or financial markets. Noise citations reduce eval quality.
 7. Once you have gathered evidence, synthesize a final analysis containing:
    - Specific evidence-grounded claims (cite filings or price moves by date)
    - Explicit acknowledgment of any gaps and errors from your tool returns
@@ -295,7 +295,7 @@ TOOL DESCRIPTIONS:
     Retrieve daily closing prices for the given tickers in the date range. If dates are omitted, returns all available history. Returns a markdown block with PRICE_HISTORY, GAPS, and ERRORS sections.
 
 - request_news(scope: str, tickers: list[str])
-    PHASE 2 STUB. Currently returns an empty result with gap "news corpus not yet wired". Do not call this more than once per query.
+    Retrieve recent news articles relevant to `scope` for the given tickers. Returns a markdown block with NEWS, GAPS, and ERRORS sections. Articles include both relevant and noise items — evaluate each article's relevance before citing.
 
 CONSTRAINTS:
 - Do not invent stock prices, percentages, or filing claims. If the evidence does not contain them, say so plainly.
@@ -310,7 +310,7 @@ strategist_agent = create_agent(
         ModelCallLimitMiddleware(run_limit=8, exit_behavior="end"),
         ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2, exit_behavior="continue"),
         ToolCallLimitMiddleware(tool_name="request_prices", run_limit=2, exit_behavior="continue"),
-        ToolCallLimitMiddleware(tool_name="request_news", run_limit=1, exit_behavior="continue"),
+        ToolCallLimitMiddleware(tool_name="request_news", run_limit=2, exit_behavior="continue"),
     ],
 )
 

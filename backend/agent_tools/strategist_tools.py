@@ -320,16 +320,39 @@ def request_prices(tickers: list[str], start_date: str = "", end_date: str = "")
 def request_news(scope: str, tickers: list[str]) -> str:
     """
     Retrieve recent news articles relevant to `scope` for the given
-    tickers. PHASE 2 STUB: currently returns empty news with a gap
-    indicating the corpus is not yet wired. Do not call more than once
-    per query — it will not return data until Phase 2 is implemented.
+    tickers. Returns a markdown block with NEWS, GAPS, and ERRORS sections.
+    Articles include both relevant and noise items — evaluate each article's
+    relevance to the query before citing it in your analysis.
     """
     evidence = EvidenceResponse(scope_request=f"news {tickers} : {scope}")
     try:
         from agents import _append_tools_called
 
-        _append_tools_called("request_news")
-        evidence.gaps.append("news corpus not yet wired (Phase 2)")
+        _append_tools_called("request_news", "query_news_articles")
+
+        from agent_tools.news_tools import query_news_articles
+
+        normalized = [t.strip().upper() for t in tickers if t and t.strip()]
+        if not normalized:
+            evidence.gaps.append("no tickers provided to request_news")
+            return serialize_for_llm(evidence)
+
+        articles = query_news_articles(normalized, limit=15)
+
+        if not articles:
+            evidence.gaps.append(f"no news articles found for tickers {normalized}")
+        else:
+            for a in articles:
+                evidence.news.append(
+                    NewsArticle(
+                        ticker=str(a.get("ticker") or ""),
+                        headline=str(a.get("headline") or ""),
+                        body=str(a.get("body") or "")[:600],
+                        published_at=str(a.get("published_at") or ""),
+                        source=str(a.get("source") or ""),
+                    )
+                )
+
     except Exception as exc:
         logger.exception("request_news failed: %s", exc)
         evidence.errors.append(f"request_news exception: {type(exc).__name__}: {exc}")
