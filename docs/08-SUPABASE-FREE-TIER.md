@@ -40,8 +40,8 @@ because they have < 50 rows by design.
 
 ### SB002 — Never select the `embedding` column over the API
 
-Embeddings are 3 072-float vectors (~24 KB JSON each). Fetching N rows with
-embeddings transfers `N × 24 KB`. For a 600-node document that is **14 MB** —
+Embeddings are 4 096-float vectors (~32 KB JSON each). Fetching N rows with
+embeddings transfers `N × 32 KB`. For a 600-node document that is **~19 MB** —
 enough to trigger statement timeouts and blow through egress.
 
 ```python
@@ -145,7 +145,7 @@ The anon role has a 3-second statement timeout. If a query risks exceeding this:
 ### Monitor database size
 
 At 500 MB the database goes read-only. Embeddings are the largest consumer.
-Before adding a new 10-K filing (~600 nodes × 24 KB = 14 MB), check current
+Before adding a new 10-K filing (~800 nodes × 32 KB ≈ 26 MB), check current
 usage in the Supabase dashboard.
 
 ## Pre-Commit Enforcement
@@ -167,6 +167,6 @@ implemented — document exceptions here until needed).
 
 | Date | Issue | Root Cause | Fix |
 |---|---|---|---|
-| 2026-04-03 | Pipeline times out, Supabase 522 | `retrieve_embedded_financial_report_info` fetched 600 rows with embeddings (~14 MB) | Switched to `match_document_tree_nodes` RPC |
+| 2026-04-03 | Pipeline times out, Supabase 522 | `retrieve_embedded_financial_report_info` fetched 600 rows with embeddings (~19 MB) | Switched to `match_document_tree_nodes` RPC |
 | 2026-04-03 | Eval batch insert fails | Single insert of 4 rows with 10 KB+ response text | Changed to per-row insert |
 | 2026-04-03 | Retriever agent causes statement timeouts | Agent makes 6 parallel `retrieve_embedded_financial_report_info` calls | Added `RETRIEVER_USE_AGENT` toggle, default off. **Phase 1b mitigation (2026-04-11):** the `_RAG_COUNTER` `ContextVar` in `backend/agents.py` hard-caps RAG calls at **3 per request** at the helper level, and `ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2)` on the Strategist agent bounds RAG invocations at the tool layer. A fourth RAG call within the same request is refused before hitting Supabase. See `backend/agent_tools/strategist_tools.py` and `docs/11-PIPELINE-PLAN.md` Phase 1b. |

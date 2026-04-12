@@ -134,6 +134,15 @@ def _get_table_name(node: ast.AST) -> str | None:
     return None
 
 
+def _has_noqa(lines: list[str], lineno: int, rule_id: str) -> bool:
+    """Check if a source line has a ``# noqa: SBXXX`` suppression comment."""
+    if 1 <= lineno <= len(lines):
+        line = lines[lineno - 1]
+        if f"# noqa: {rule_id}" in line:
+            return True
+    return False
+
+
 def _check_ast(tree: ast.Module, filepath: str, lines: list[str], violations: list[Violation]):
     """Run AST-based structural checks."""
 
@@ -171,6 +180,8 @@ def _check_ast(tree: ast.Module, filepath: str, lines: list[str], violations: li
                 if child is node:
                     continue
                 if isinstance(child, ast.Call) and _is_supabase_query_chain(child):
+                    if _has_noqa(lines, child.lineno, "SB003"):
+                        continue
                     violations.append(Violation(
                         "SB003", filepath, child.lineno,
                         "Supabase query inside a loop (N+1 pattern). "

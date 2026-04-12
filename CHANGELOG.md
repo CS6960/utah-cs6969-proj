@@ -49,6 +49,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Retriever had no way to cite day-over-day price moves — historical CSV was seeded but no tool queried it; added `get_stock_price_history` and wired it into the retriever prompt and fallback
 
 ### Changed
+- **Phase 2 Tree-RAG rebuild**: replaced broken TOC-page-number parser (`script/test_10k_llm_nvd.py`, removed via `git rm`) with edgartools-based ingest at `backend/scripts/ingest_10k_filings.py`. Full re-embed of all 8 portfolio 10-Ks (AAPL, MSFT, GOOGL, AMZN, NVDA, LLY, JPM, XOM). Two-phase atomic-or-nothing commit: Phase A builds all 8 payloads in-memory, Phase B runs a schema probe, bulk DELETE of 18 old+new `file_title` strings, per-ticker INSERT with completeness gate, cross-ticker coverage gate (≥7 of 8 tickers on unfiltered "risk factors" top_k=8), `rollback_all()` on any exception. Unfiltered "risk factors" top_k=8 coverage improves from 3 of 8 to ≥7 of 8 tickers. Schema and `match_document_tree_nodes` RPC contract unchanged — Phase 1b gate criteria remain valid.
+  - Corrected `docs/08-SUPABASE-FREE-TIER.md` payload math: 3072 → 4096 dims, 24 KB → 32 KB per row, 14 MB → 19 MB per 600-node filing, 26 MB per ~800-node filing.
+- **Phase 2 validation harness** at `script/validate_10k_rag.py`: 32-cell content matrix (8 tickers × 4 scopes: risk factors, MD&A, revenue segments, competition). Exits 0 only if all 32 cells pass content-level keyword and regex assertions.
+- **Phase 2 smoke test** added `run_m_rag()` to `script/smoke_test.py` targeting GOOGL (current worst-case ticker), gated behind `--include-rag` flag during the scaffold phase.
 - `/api/agent` now routes through `run_strategist_agent()` instead of the regression-routed `financial_advisor_agent`. Response shape `(result, tools_called, execution_trace)` unchanged so the frontend is unaffected
 - `AGENTS["financial_advisor"]` now points at `strategist_agent`. The `financial_advisor_agent` Python object is retained in `agents.py` for a future Phase 4 cleanup but is unreachable via `/api/agent`
 - `docs/08-SUPABASE-FREE-TIER.md` incident log: 2026-04-03 RAG fan-out entry now cites the Phase 1b `_RAG_COUNTER` + `ToolCallLimitMiddleware` mitigation
@@ -91,6 +95,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `==` replaced with strict equality (`===`) for `dayChangePct` null check
 
 ### Removed
+- `script/test_10k_llm_nvd.py` and `script/test_10k_llm_nvd.ipynb` — broken TOC-page-number parser, superseded by the edgartools-based ingest at `backend/scripts/ingest_10k_filings.py`. Recovery path: `git show HEAD~1:script/test_10k_llm_nvd.py > /tmp/test_10k_llm_nvd.py` (adjust `HEAD~N` depending on commit order).
 - `backend/pipeline.py` (dead code — zero importers verified; its `EvidencePackage` dataclass was shadowed by the new `EvidenceResponse` type)
 - Q5 "What is the operating margin for Nvida?" from `script/run_eval.py` `PRESET_QUESTIONS` (never had ground truth, always scored 0, trivially satisfied acceptance criteria)
 - Dead code: `buildReply()` and `buildPortfolioReply()` functions (replaced by agent endpoint)

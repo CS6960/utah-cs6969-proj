@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -35,6 +36,19 @@ DATA_TOOLS = {
     "get_price_history_for_symbols",
     "get_stock_price_history",
 }
+
+# Distinctive Alphabet risk-factor phrases used by run_m_rag().
+# Phase 4b calibration required: after the live ingest runs, probe GOOGL Item 1A
+# content via retrieve_embedded_financial_report_info and replace these TODOs
+# with 2-3 distinctive phrases that appear in Alphabet's risk factors but not
+# in other tickers'. Good candidates: "Search", "YouTube", "Android",
+# "Google Cloud", specific regulatory language unique to Google's advertising
+# business. Bad candidates: generic phrases like "material adverse effect".
+ALPHABET_RISK_PHRASES = [
+    "TODO_CALIBRATE_1",  # Phase 4b calibration required
+    "TODO_CALIBRATE_2",
+    "TODO_CALIBRATE_3",
+]
 
 # Keywords indicating the Strategist acknowledged the news gap
 NEWS_GAP_KEYWORDS = [
@@ -206,6 +220,49 @@ def run_m3(base_url: str) -> tuple[bool, str]:
         return False, f"M3 FAIL ({elapsed} ms): {exc}"
 
 
+def run_m_rag(base_url: str) -> tuple[bool, str]:
+    """M-RAG: verify GOOGL risk-factor retrieval via Strategist agent.
+
+    Targets the current worst-case ticker (Alphabet was invisible at
+    top_k=40 pre-Phase-2-rebuild due to mislabelled Risk Factors content).
+    Asserts content-level: tools_called includes request_filings, response
+    cites Alphabet/Google, response contains at least one distinctive
+    Alphabet risk phrase from ALPHABET_RISK_PHRASES (calibrated in T4b
+    post-ingest).
+    """
+    query = "What is the biggest risk factor Alphabet discloses in its latest 10-K?"
+    t0 = time.time()
+    try:
+        resp = requests.post(
+            f"{base_url}/api/agent",
+            json={"query": query},
+            timeout=180,
+        )
+        elapsed = int((time.time() - t0) * 1000)
+        assert resp.status_code == 200, f"HTTP {resp.status_code}"
+        body = resp.json()
+        result = body.get("result") or ""
+        tools_called = body.get("tools_called") or []
+
+        assert "request_filings" in tools_called, (
+            f"'request_filings' not in tools_called: {tools_called}"
+        )
+        assert any(name in result for name in ("Alphabet", "Google")), (
+            f"response does not mention Alphabet or Google. "
+            f"Snippet: {result[:300]!r}"
+        )
+        assert any(phrase in result for phrase in ALPHABET_RISK_PHRASES), (
+            f"response contains none of ALPHABET_RISK_PHRASES "
+            f"(T4b calibration pending). Snippet: {result[:300]!r}"
+        )
+        assert len(result) > 500, f"response too short ({len(result)} chars)"
+
+        return True, f"M-RAG PASS ({elapsed} ms, result {len(result)} chars, tools: {tools_called})"
+    except Exception as exc:
+        elapsed = int((time.time() - t0) * 1000)
+        return False, f"M-RAG FAIL ({elapsed} ms): {exc}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Phase 1b Strategist smoke test")
     parser.add_argument(
@@ -217,6 +274,14 @@ def main() -> int:
         "--skip-boot",
         action="store_true",
         help="Skip uvicorn management; assume backend is already running",
+    )
+    parser.add_argument(
+        "--include-rag",
+        action="store_true",
+        help=(
+            "Run M-RAG GOOGL risk-factor check (gated: scaffold uses TODO phrases "
+            "that will not match real responses until T4b calibration)"
+        ),
     )
     args = parser.parse_args()
     base_url = args.base_url.rstrip("/")
@@ -252,6 +317,13 @@ def main() -> int:
     ok, msg = run_m3(base_url)
     print(msg)
     results.append(("M3", ok, msg))
+
+    # M-RAG (gated — not run by default; enable via --include-rag or MERIDIAN_SMOKE_INCLUDE_RAG=1)
+    include_rag = args.include_rag or os.environ.get("MERIDIAN_SMOKE_INCLUDE_RAG") == "1"
+    if include_rag:
+        ok, msg = run_m_rag(base_url)
+        print(msg)
+        results.append(("M-RAG", ok, msg))
 
     passed = sum(1 for _, s, _ in results if s is True)
     failed = sum(1 for _, s, _ in results if s is False)
