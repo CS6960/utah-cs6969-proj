@@ -45,9 +45,9 @@ DATA_TOOLS = {
 # "Google Cloud", specific regulatory language unique to Google's advertising
 # business. Bad candidates: generic phrases like "material adverse effect".
 ALPHABET_RISK_PHRASES = [
-    "TODO_CALIBRATE_1",  # Phase 4b calibration required
-    "TODO_CALIBRATE_2",
-    "TODO_CALIBRATE_3",
+    "Google Search",
+    "Android operating system",
+    "advertising technologies",
 ]
 
 # Keywords indicating the Strategist acknowledged the news gap
@@ -318,12 +318,10 @@ def main() -> int:
     print(msg)
     results.append(("M3", ok, msg))
 
-    # M-RAG (gated — not run by default; enable via --include-rag or MERIDIAN_SMOKE_INCLUDE_RAG=1)
-    include_rag = args.include_rag or os.environ.get("MERIDIAN_SMOKE_INCLUDE_RAG") == "1"
-    if include_rag:
-        ok, msg = run_m_rag(base_url)
-        print(msg)
-        results.append(("M-RAG", ok, msg))
+    # M-RAG — GOOGL risk-factor retrieval check (calibrated with real Alphabet phrases)
+    ok, msg = run_m_rag(base_url)
+    print(msg)
+    results.append(("M-RAG", ok, msg))
 
     passed = sum(1 for _, s, _ in results if s is True)
     failed = sum(1 for _, s, _ in results if s is False)
