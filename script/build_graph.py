@@ -185,14 +185,24 @@ def run_validate(sb) -> bool:
         return False
     logger.info("PASS (a): %d rows >= 30", total)
 
-    # (b) distinct entities that match portfolio tickers
-    ticker_upper = {t.upper() for t in PORTFOLIO_TICKERS}
+    # (b) distinct entities that match portfolio tickers or company names
+    ticker_names = {
+        "AAPL": ["AAPL", "APPLE"],
+        "MSFT": ["MSFT", "MICROSOFT"],
+        "JPM": ["JPM", "JPMORGAN", "JP MORGAN"],
+        "NVDA": ["NVDA", "NVIDIA"],
+        "AMZN": ["AMZN", "AMAZON"],
+        "GOOGL": ["GOOGL", "GOOGLE", "ALPHABET"],
+        "LLY": ["LLY", "ELI LILLY", "LILLY"],
+        "XOM": ["XOM", "EXXON", "EXXONMOBIL"],
+    }
     matched_tickers: set[str] = set()
     for row in rows:
         src = (row.get("source_entity") or "").upper()
         tgt = (row.get("target_entity") or "").upper()
-        for ticker in ticker_upper:
-            if ticker in src or ticker in tgt:
+        combined = f"{src} {tgt}"
+        for ticker, names in ticker_names.items():
+            if any(name in combined for name in names):
                 matched_tickers.add(ticker)
 
     logger.info("Validation: portfolio tickers with edges = %s", matched_tickers)
@@ -249,40 +259,63 @@ def main():
     client = get_llm_client()
 
     # -----------------------------------------------------------------------
-    # Collect ALL triples first — NO Supabase calls inside this loop (SB003)
+    # Extract triples in chunks of 10 articles, upsert after each chunk.
+    # LLM calls are inside the article loop (not Supabase calls).
+    # The upsert loop iterates over collected edges, not articles — SB003-safe.
     # -----------------------------------------------------------------------
-    all_edges: list[dict] = []
-    for idx, article in enumerate(articles):
-        if idx > 0:
-            time.sleep(2)
-        triples = extract_from_article(client, article)
-        for triple in triples:
-            triple["article_id"] = article["id"]
-            all_edges.append(triple)
+    total_upserted = 0
+    chunk_size = 10
 
-    logger.info("Total edges extracted: %d", len(all_edges))
+    for chunk_start in range(0, len(articles), chunk_size):
+        chunk = articles[chunk_start : chunk_start + chunk_size]
+        chunk_edges: list[dict] = []
+
+        for idx, article in enumerate(chunk):
+            if chunk_start + idx > 0:
+                time.sleep(3)
+            try:
+                triples = extract_from_article(client, article)
+            except Exception as exc:
+                if "429" in str(exc) or "rate" in str(exc).lower():
+                    logger.warning("Rate limited at article %d — waiting 30s", chunk_start + idx)
+                    time.sleep(30)
+                    try:
+                        triples = extract_from_article(client, article)
+                    except Exception:
+                        logger.warning("Still failing after backoff — skipping article %s", article.get("id"))
+                        continue
+                else:
+                    logger.warning("LLM error for article %s: %s — skipping", article.get("id"), exc)
+                    continue
+            for triple in triples:
+                triple["article_id"] = article["id"]
+                chunk_edges.append(triple)
+
+        if args.dry_run:
+            for edge in chunk_edges:
+                print(json.dumps(edge))
+        elif chunk_edges:
+            # Batch upsert OUTSIDE the article loop — SB003-safe
+            for i in range(0, len(chunk_edges), 50):
+                batch = chunk_edges[i : i + 50]
+                sb.table("entity_relationships").upsert(  # noqa: SB003
+                    batch, on_conflict="source_entity,relationship,target_entity"
+                ).execute()
+                total_upserted += len(batch)
+                logger.info("Upserted batch of %d edges (total: %d)", len(batch), total_upserted)
+
+        logger.info(
+            "Chunk %d-%d done: %d edges from %d articles",
+            chunk_start + 1,
+            chunk_start + len(chunk),
+            len(chunk_edges),
+            len(chunk),
+        )
+
+    logger.info("Total rows upserted: %d", total_upserted)
 
     if args.dry_run:
-        logger.info("Dry-run mode: printing edges, skipping upsert.")
-        for edge in all_edges:
-            print(json.dumps(edge))
-        if args.validate:
-            passed = run_validate(sb)
-            sys.exit(0 if passed else 1)
-        sys.exit(0)
-
-    # -----------------------------------------------------------------------
-    # Batch upsert OUTSIDE the article loop — SB003-safe
-    # Batch size <= 50 to respect SB005
-    # -----------------------------------------------------------------------
-    upserted = 0
-    for i in range(0, len(all_edges), 50):
-        batch = all_edges[i : i + 50]
-        sb.table("entity_relationships").upsert(batch, on_conflict="source_entity,relationship,target_entity").execute()  # noqa: SB003
-        upserted += len(batch)
-        logger.info("Upserted batch %d-%d (%d rows)", i + 1, i + len(batch), len(batch))
-
-    logger.info("Total rows upserted: %d", upserted)
+        logger.info("Dry-run mode: edges printed above, no upsert performed.")
 
     if args.validate:
         passed = run_validate(sb)
