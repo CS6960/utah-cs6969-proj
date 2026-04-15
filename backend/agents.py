@@ -210,6 +210,8 @@ financial_advisor_agent = create_agent(
     tools=[
         *BASE_ADVISOR_TOOLS,
         call_financial_reports_retrieval_agent,
+        call_skeptic_response,
+        call_visionary_response,
     ],
     system_prompt=(
         "You are a financial advisor assistant for a portfolio analysis application. "
@@ -225,8 +227,8 @@ financial_advisor_agent = create_agent(
         "Before finalizing any summary or recommendation, you must first draft your working analysis, "
         "then call `call_skeptic_response`, then call `call_visionary_response`, and only then produce "
         "the final answer. "
-        "The required order is: working analysis -> retrieval -> final answer. "
-        "Do not answer report-content questions from memory. "
+        "The required order is: working analysis -> retrieval -> skeptic -> visionary -> final answer. "
+        "Your final answer should integrate both the skeptical and visionary perspectives into one coherent summary. "        "Do not answer report-content questions from memory. "
         "Ground your answers in the available portfolio data and current market data when possible. "
         "Be clear, analytical, concise, and practical. "
         "Do not make up holdings, prices, or portfolio facts. "
