@@ -9,34 +9,45 @@ This document describes the backend agents, their tools, the Strategist-orchestr
 | 0 | `baseline` | Single advisor agent (monolithic) | **Done** — scored 1.0 avg (LLM + human) |
 | 1 | `rag_reports` | Sequential Retriever→Strategist (doc'd, dead on arrival) | **Superseded** — see Phase 1b |
 | 1b | `strategist_agent` | Strategist-orchestrated agent with typed evidence tools | **Implemented** |
-| 2 | `news_agent` | Phase 1b + real `request_news` tool against the news corpus | Not started |
-| 3 | `graph` | Phase 2 + `request_graph` tool for cross-sector reasoning | Not started |
-| 4 | `critic` | Phase 3 + Critic LLM agent for adversarial review | Not started |
+| 2 | `news_agent` | Phase 1b + real `request_news` tool against the news corpus | **Implemented** |
+| 3 | `graph` | Phase 2 + `request_graph` tool for cross-sector reasoning | **Implemented** |
+| 4 | `critic` | Phase 3 + grounded Critic pipeline (Retriever → evidence assembly → Strategist-draft → Critic → Strategist-revision) | **Implemented** |
 
 Each phase must be implemented, evaluated, and pass its gate criteria before work begins on the next phase. See `docs/11-PIPELINE-PLAN.md` for gate criteria, rationale, and deliverables; `internal/phase1b_agent_pivot.md` for the pivot memo; `docs/09-EVALUATION.md` for scoring methodology.
 
-## Target Architecture: Strategist-Orchestrated Agent (Phase 1b)
+## Target Architecture: Three-Role Grounded Critic Pipeline (Phase 4)
 
 ```
 User Query
     ↓
 POST /api/agent
     ↓
-run_strategist_agent(query)
-    ├─ build_portfolio_context()        [holdings + cash]
-    ├─ strategist_agent.invoke()        [LangChain create_agent loop]
-    │     ├─ request_filings(scope, tickers)     → EvidenceResponse (filings)
-    │     ├─ request_prices(tickers, start, end) → EvidenceResponse (price_history)
-    │     ├─ request_news(scope, tickers)        → EvidenceResponse (news; stub in 1b)
-    │     └─ synthesize final answer (≤1500 words)
-    └─ return {result, tools_called, execution_trace}
+run_critic_agent(query)                      [bypasses AGENTS dict]
+    ├─ build_portfolio_context()             [holdings + cash]
+    ├─ retriever_agent.invoke()              [LangChain create_agent loop — 4 tools]
+    │     ├─ request_news(scope, tickers)    → EvidenceResponse (news)
+    │     ├─ request_prices(tickers, ...)    → EvidenceResponse (price_history)
+    │     ├─ request_filings(scope, tickers) → EvidenceResponse (filings)
+    │     └─ request_graph(scope, entities, hops) → EvidenceResponse (graph)
+    ├─ _assemble_evidence_package(messages)  [deterministic; tool_call_id joins]
+    │     → numbered sections per ToolMessage; empty → pipeline_short_circuit
+    ├─ model.invoke()  [Strategist-draft — tool-free LLM call]
+    │     → draft_v1 (≤1500 words, cites evidence verbatim)
+    ├─ model.bind(temperature=0.85).invoke()  [Critic — tool-free LLM call]
+    │     → dissent (CHALLENGES / MISSING_EVIDENCE / ALTERNATIVE_HYPOTHESES)
+    │     → parsed by _parse_critic_challenges(); 0 challenges → skip revision
+    └─ model.invoke()  [Strategist-revision — tool-free LLM call, skip if 0 challenges]
+          → v2 + "---\n### Dissenting perspective\n" + dissent
+          → return (result, dissent, draft_v1, tools_called, execution_trace)
 ```
 
-The Strategist is a LangChain `create_agent()` CompiledStateGraph that holds three typed evidence tools. Each tool is a thin wrapper over a deterministic helper (no nested LLM sub-agent) and returns an `EvidenceResponse` slice serialized as markdown. The Strategist reads the observations, inspects `GAPS:` and `ERRORS:` sections, optionally refines its scope, and synthesizes a final answer.
+The Retriever is the only LangChain `create_agent()` loop in the pipeline. It calls four typed tools (`request_news`, `request_prices`, `request_filings`, `request_graph`) and its final AIMessage is discarded after evidence assembly. The three downstream calls (Strategist-draft, Critic, Strategist-revision) are direct `model.invoke()` calls with no tools, making the pipeline fully deterministic after the Retriever's tool loop completes.
+
+`/api/agent` calls `run_critic_agent` directly. The `AGENTS` dict is retained but only reached by `run_agent()`, which is used exclusively by `/api/report-agent` (`financial_reports_retrieval_agent` role).
 
 ### Honest framing of "multi-agent"
 
-Phase 1b has **one** active LLM agent (the Strategist). The former "Retriever agent" from the sequential design is realized as a **typed-adapter layer** — three tools wrapping deterministic helpers — not as a separate LLM sub-agent. Phase 4 adds a Critic LLM agent after the Strategist's synthesis, which is when the system genuinely becomes multi-agent.
+Phase 4 has **three** active LLM roles: Retriever (tool-loop), Critic (adversarial, tool-free), and Strategist (draft + revision, tool-free). The Retriever and Critic are distinct agents with conflicting objectives; the Strategist-revision role incorporates or rebuts Critic challenges with evidence citations. This is the first phase where the system is genuinely multi-agent by any reasonable definition.
 
 This is an honest restatement of the project's "multi-agent" framing. The Phase 1 sequential Retriever→Strategist design shipped but never routed production traffic: `/api/agent` fell back to the single `financial_advisor` agent after a merge, and the "Retriever" was a deterministic fallback (`RETRIEVER_USE_AGENT=0` by default). No LLM chose tools in any production code path until Phase 1b restored the routing via the Strategist `create_agent` loop.
 
@@ -70,7 +81,9 @@ ERRORS: <explicit errors or "none">
 
 The `gaps` and `errors` fields are the critical addition. They make the agent self-diagnosing: if `get_price_history_for_symbols` returns an empty set, the `gaps` field records "no price data for TICKER between START and END"; if the RPC raises, the `errors` field records the exception string. Both land in the Strategist's context window, so its final response cites the missing evidence rather than hallucinating around it. This directly closes the Milestone 2 human-eval finding that the LLM judge could not detect infrastructure bugs (cash excluded, empty filings, missing prices).
 
-## Current State: Phase 0 (Baseline)
+## Archived: Phase 0 (Baseline)
+
+> **Historical note.** The sections below describe the pre-pipeline Phase 0 architecture. These tools (`ADVISOR_TOOLS`, `REPORT_TOOLS`, `DuckDuckGoSearchResults`, `YahooFinanceNewsTool`, `get_stock_price`, `get_portfolio_holdings`, `get_stock_price_history`, `calculator` — helpers only; `calculator` is retained inside `REPORT_RETRIEVAL_TOOLS`) were removed during the Phase 1b and Phase 4 refactors. `/api/agent` now runs the Phase 4 three-role pipeline described above; `/api/report-agent` runs `financial_reports_retrieval_agent` over `REPORT_RETRIEVAL_TOOLS`. This section is preserved for historical context only.
 
 ### Files
 
@@ -150,9 +163,9 @@ Replaces the dead Phase 1 sequential pipeline with an LLM-driven Strategist that
 
 | File | Purpose |
 |------|---------|
-| `backend/agent_tools/strategist_tools.py` | `EvidenceResponse` dataclass + field types, cash-inclusive `build_portfolio_context()`, `serialize_for_llm()`, three `@tool` wrappers (`request_filings`, `request_prices`, `request_news`) |
-| `backend/agents.py` | `STRATEGIST_AGENT_PROMPT`, `strategist_agent` (LangChain `create_agent()` with middleware), `run_strategist_agent(query)`, `_RAG_COUNTER` `ContextVar` for defense-in-depth |
-| `backend/app.py` | `/api/agent` routes to `run_strategist_agent` (see API section below) |
+| `backend/agent_tools/strategist_tools.py` | `EvidenceResponse` dataclass + field types, cash-inclusive `build_portfolio_context()`, `serialize_for_llm()`, four `@tool` wrappers (`request_filings`, `request_prices`, `request_news`, `request_graph`) |
+| `backend/agents.py` | `RETRIEVER_AGENT_PROMPT`, `retriever_agent` (LangChain `create_agent()` with middleware), `run_critic_agent(query)`, `_assemble_evidence_package`, `_parse_critic_challenges`, `_RAG_COUNTER` `ContextVar` for defense-in-depth |
+| `backend/app.py` | `/api/agent` routes to `run_critic_agent` directly; `/api/report-agent` unchanged (routes via `run_agent` to `financial_reports_retrieval_agent`) |
 
 ### Strategist tools
 
@@ -172,59 +185,80 @@ Phase 1b ships a **stub** that always returns an empty result with an explicit `
 
 ### Hard caps
 
-The Strategist's `create_agent()` is wrapped with LangChain middleware to bound cost and protect the Supabase free tier:
+The Retriever's `create_agent()` is wrapped with LangChain middleware to bound cost and protect the Supabase free tier:
 
 | Cap | Mechanism | Value |
 |-----|-----------|-------|
-| Total model calls per run | `ModelCallLimitMiddleware(run_limit=8)` | 8 |
+| Total model calls per run | `ModelCallLimitMiddleware(run_limit=12)` | 12 |
 | `request_filings` calls | `ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2)` | 2 |
 | `request_prices` calls | `ToolCallLimitMiddleware(tool_name="request_prices", run_limit=2)` | 2 |
-| `request_news` calls | `ToolCallLimitMiddleware(tool_name="request_news", run_limit=1)` | 1 |
+| `request_news` calls | `ToolCallLimitMiddleware(tool_name="request_news", run_limit=2)` | 2 |
+| `request_graph` calls | `ToolCallLimitMiddleware(tool_name="request_graph", run_limit=2)` | 2 |
 | Global RAG ceiling | `_RAG_COUNTER` `ContextVar` in `backend/agents.py` | 3 per request |
 
 `_RAG_COUNTER` is defense-in-depth: a module-level `ContextVar` that `request_filings` increments on each call and that the underlying RAG helper checks before issuing a Supabase query. If a future tool or code path bypasses `ToolCallLimitMiddleware` and accidentally issues a fourth RAG call within the same request, the counter raises and the call is refused at the helper level. This is the direct mitigation for the 2026-04-03 incident where a 6-way parallel `retrieve_embedded_financial_report_info` fan-out triggered Supabase statement timeouts (see `docs/08-SUPABASE-FREE-TIER.md`).
 
-### New agent role
+### Active agent roles (Phase 4)
 
-#### `strategist`
+#### `retriever` (via `retriever_agent`)
 
-Purpose: Orchestrate typed evidence retrieval and synthesize the final answer. One active LLM agent in Phase 1b.
+Purpose: Gather evidence with four typed tools. Produces no analysis or recommendations.
 
-Tools: `request_filings`, `request_prices`, `request_news`
+Tools: `request_news`, `request_prices`, `request_filings`, `request_graph`
 
-Behavior: Decomposes the user query into evidence scopes, calls tools, inspects `gaps`/`errors`, optionally refines scope (one retry), then synthesizes a ≤1500-word answer. Instructed to **refuse to invent facts** when gaps/errors are present.
+Behavior: Decomposes the user query into evidence needs, calls tools in the prescribed order (news first, then prices, then filings, then graph if cross-sector causal chains are indicated). Final AIMessage is discarded after `_assemble_evidence_package` processes the ToolMessages.
 
-Output: Final-answer string plus collected `tools_called` and `execution_trace` for eval.
+#### `strategist` (Strategist-draft and Strategist-revision, tool-free)
+
+Purpose: Synthesize the evidence package into a specific, actionable recommendation (draft), then revise it in response to Critic challenges.
+
+Tools: None — direct `model.invoke()` calls.
+
+Behavior: Draft cites evidence verbatim (price, date, filing excerpt, graph edge). Revision acknowledges each CHALLENGE as ACCEPTED or REJECTED with evidence citation.
+
+#### `critic` (tool-free, `temperature=0.85`)
+
+Purpose: Adversarially re-derive conclusions from the same evidence package and flag where the Strategist-draft's claims do not match what the evidence actually supports.
+
+Tools: None — direct `model.bind(temperature=0.85).invoke()` call.
+
+Output: Three structured sections: CHALLENGES (enumerated), MISSING_EVIDENCE, ALTERNATIVE_HYPOTHESES. Parsed by `_parse_critic_challenges`; 0 challenges triggers revision skip.
 
 ### API changes
 
-`POST /api/agent` calls `run_strategist_agent(query)` (replacing both `run_agent()` and the Phase 1 `run_pipeline()` that never actually routed production traffic). Response:
+`POST /api/agent` calls `run_critic_agent(query)` directly, bypassing the `AGENTS` dict. Phase 4 response:
 
 ```json
 {
-  "result": "...",
-  "tools_called": ["request_filings", "request_prices"],
+  "result": "<revised recommendation>---\n### Dissenting perspective\n<critic output>",
+  "dissent": "<critic output>",
+  "draft": "<strategist draft before revision>",
+  "tools_called": ["request_news", "request_filings", "request_prices", "request_graph"],
   "execution_trace": [...]
 }
 ```
 
-`POST /api/report-agent` is **unchanged** — it still routes to the `financial_reports_retrieval_agent` via `run_agent`. Phase 1b only touches the Strategist path; the reports-embedding workflow is deliberately out of scope.
+`result` embeds the Critic's output under a `### Dissenting perspective` header (separated by `---`) for backwards-compatible single-string consumers. Programmatic consumers can read the `dissent` key directly or split `result` on `---`.
 
-### Gate criteria
+`POST /api/report-agent` is **unchanged** — still routes to `financial_reports_retrieval_agent` via `run_agent`. The Phase 4 changes do not touch the reports-embedding workflow.
 
-- `/api/agent` routes to `run_strategist_agent(query)`
+### Gate criteria (Phase 1b — historical, superseded by Phase 4)
+
+> **Historical note.** Phase 1b gate was met 2026-04-11; Phase 4 then renamed `strategist_agent` → `retriever_agent`, replaced `run_strategist_agent` with `run_critic_agent`, and raised `ModelCallLimitMiddleware(run_limit=12)` to accommodate the 4th tool (`request_graph`). The criteria below describe Phase 1b at the time it shipped; they remain satisfied under Phase 4 except where explicitly superseded.
+
+- `/api/agent` routes to the Phase-4 `run_critic_agent(query)` (was: `run_strategist_agent`)
 - The Phase 1 pipeline module is deleted
-- `backend/agent_tools/strategist_tools.py` exports `EvidenceResponse`, `request_filings`, `request_prices`, `request_news`, `build_portfolio_context`, `serialize_for_llm`
+- `backend/agent_tools/strategist_tools.py` exports `EvidenceResponse`, `request_filings`, `request_prices`, `request_news`, `request_graph`, `build_portfolio_context`, `serialize_for_llm`
 - `build_portfolio_context` includes cash
-- Tool output always includes `SCOPE:`, `TOOLS_CALLED:`, `FILINGS:`, `PRICE_HISTORY:`, `GAPS:`, `ERRORS:` sections (even when empty)
-- `ModelCallLimitMiddleware(run_limit=8)` + per-tool `ToolCallLimitMiddleware` active on `strategist_agent`
+- Tool output always includes `SCOPE:`, `TOOLS_CALLED:`, `FILINGS:`, `PRICE_HISTORY:`, `NEWS:`, `GRAPH_CONNECTIONS:`, `GAPS:`, `ERRORS:` sections (even when empty)
+- `ModelCallLimitMiddleware(run_limit=12)` + per-tool `ToolCallLimitMiddleware(run_limit=2)` active on `retriever_agent` (was: `strategist_agent`, run_limit=8)
 - `_RAG_COUNTER` raises or returns a sentinel on the 4th RAG call within a single request
 - `tools_called` non-empty in 3 of 4 eval questions
 - Groundedness avg > 1.0
 
 ## Phase 2: `news_agent` — Real `request_news` Tool
 
-**Status: Not started**
+**Status: Implemented**
 
 **Prerequisite: Phase 1b gate met.**
 
@@ -259,7 +293,7 @@ Queries the `news_articles` Supabase table. Does NOT filter by `relevant = true`
 
 ## Phase 3: `graph` — Entity-Relationship Graph
 
-**Status: Not started**
+**Status: Implemented**
 
 **Prerequisite: Phase 2 gate met.**
 
@@ -288,54 +322,51 @@ Pre-built at setup time (not query time). The script extracts entity-relationshi
 - Relational Recall avg > 3.0
 - Responses contain explicit multi-hop causal chains
 
-## Phase 4: `critic` — Adversarial Critic + Revision
+## Phase 4: `critic` — Grounded Adversarial Critic + Revision
 
-**Status: Not started**
+**Status: Implemented**
 
 **Prerequisite: Phase 3 gate met.**
 
-Adds a second LLM agent — the Critic — that runs **after** the Strategist's synthesis to challenge it adversarially, after which the Strategist revises. This is the point where the system becomes genuinely multi-agent: two LLM agents (Strategist + Critic) with distinct roles.
+Adds two additional tool-free LLM roles — Critic and Strategist-revision — after the Retriever's evidence assembly. The Retriever is renamed from `strategist_agent` and restricted to evidence gathering only; synthesis is moved downstream. This is the first phase where the system is genuinely multi-agent.
 
-### New agent role
+### Key files
 
-#### `critic`
+| File | Purpose |
+|------|---------|
+| `backend/agents.py` | `RETRIEVER_AGENT_PROMPT`, `retriever_agent`, `run_critic_agent(query)`, `_assemble_evidence_package(messages)`, `_parse_critic_challenges(dissent_text)` |
+| `backend/app.py` | `/api/agent` calls `run_critic_agent` directly (bypasses `AGENTS` dict) |
+| `script/smoke_test.py` | `run_m_critic()` milestone asserting `dissent`, `draft`, and `### Dissenting perspective` presence; gated behind `--include-critic` |
 
-Purpose: Adversarially challenge the Strategist's recommendation.
+### Evidence assembly
 
-Tools: None — receives evidence + recommendation as text.
+`_assemble_evidence_package(messages)` iterates the Retriever's full message list, joins `ToolMessage` content to the originating tool call via `tool_call_id`, and renders numbered `## Tool call N — <name>(<args>)` sections with an evidence-coverage header. If no ToolMessages are found, returns an empty string, triggering the `pipeline_short_circuit` event and early return.
 
-Responsibilities:
-1. Flag weak or stale evidence
-2. Test alternative hypotheses
-3. Identify missing relational context
-4. Assess temporal validity
+### Critic output format
 
-### Pipeline (fully wired)
+The Critic is instructed to produce exactly three sections with enumerated items:
 
-```python
-def run_strategist_agent(query):
-    context = build_portfolio_context()
-    strategist_out = strategist_agent.invoke({"query": query, "portfolio": context})
-    recommendation = strategist_out.final_response
-    evidence = strategist_out.collected_evidence
-    # Phase 4 addition: Critic reviews + Strategist revises
-    critique = run_critic(query, evidence, recommendation)
-    revised = run_strategist_revision(query, evidence, recommendation, critique)
-    return {
-        "result": revised,
-        "tools_called": evidence.tools_called,
-        "critique_summary": critique,
-        "pipeline_stages": ["strategist", "critic", "revision"],
-    }
 ```
+CHALLENGES:
+1. <draft claim>. Evidence says: <what evidence shows>. Therefore draft is <verdict>.
+
+MISSING_EVIDENCE:
+1. <claim implied but not in evidence>
+
+ALTERNATIVE_HYPOTHESES:
+1. <alternative reading of the same evidence>
+```
+
+`_parse_critic_challenges` counts enumerated CHALLENGES entries. If 0 (or only the "no material challenges identified" placeholder), Strategist-revision is skipped and `draft_v1` is returned unchanged.
 
 ### Gate criteria (final)
 
-- Full run: Strategist (with tools) → Critic → Revision
-- All 5 dimensions avg > Phase 3 avg
-- Actionability avg > 3.5
+- `run_critic_agent` wired as the sole handler for `POST /api/agent`
+- `data.dissent` non-empty (≥200 chars) in smoke test
+- `### Dissenting perspective` header present in `data.result`
+- `data.draft` returned as a string
+- All 5 eval dimensions avg > Phase 3 avg
 - Responses include dissenting perspective
-- Full eval report shows monotonic improvement across all stages
 
 ## API Endpoints
 
@@ -343,14 +374,13 @@ The FastAPI entry points are defined in [backend/app.py](../backend/app.py).
 
 ### `POST /api/agent`
 
-General-purpose agent endpoint. In Phase 1b it calls `run_strategist_agent(query)` directly; the sequential pipeline path from Phase 1 is deleted.
+General-purpose agent endpoint. In Phase 4 it calls `run_critic_agent(query)` directly, bypassing the `AGENTS` dict. The `role` field in the request body is ignored for this endpoint.
 
 Request body:
 
 ```json
 {
-  "query": "What is my portfolio concentration risk?",
-  "role": "financial_advisor"
+  "query": "What is my portfolio concentration risk?"
 }
 ```
 
@@ -358,13 +388,15 @@ Response:
 
 ```json
 {
-  "result": "...",
-  "tools_called": ["request_filings", "request_prices"],
+  "result": "<revised recommendation>\n\n---\n### Dissenting perspective\n<critic output>",
+  "dissent": "<critic output>",
+  "draft": "<strategist draft before revision>",
+  "tools_called": ["request_news", "request_prices", "request_filings", "traverse_entity_graph"],
   "execution_trace": [...]
 }
 ```
 
-Phase 4 adds `pipeline_stages` and `critique_summary` fields.
+All timestamps in `execution_trace` events use Denver time (`America/Denver`).
 
 ### `POST /api/report-agent`
 
@@ -393,4 +425,4 @@ The advisor-facing portfolio context comes from [backend/portfolio.py](../backen
 - The report tools currently use Supabase for persistent vector storage.
 - TOC detection and section-map generation still rely on structured JSON responses.
 - Section content generation relies on plain text responses for embedding.
-- The Strategist-orchestrated agent layer lives in `backend/agent_tools/strategist_tools.py` (tools, typed contract, serialization) and `backend/agents.py` (`strategist_agent`, `run_strategist_agent`). Phases 2 and 3 add new tools to `strategist_tools.py`; Phase 4 adds a Critic agent in `agents.py` that runs after the Strategist's synthesis.
+- The Phase 4 pipeline lives in `backend/agents.py` (`retriever_agent`, `run_critic_agent`, `_assemble_evidence_package`, `_parse_critic_challenges`) and `backend/agent_tools/strategist_tools.py` (typed tools, `EvidenceResponse`, `serialize_for_llm`, `build_portfolio_context`). The `financial_reports_retrieval_agent` and `REPORT_RETRIEVAL_TOOLS` are unchanged and serve only `/api/report-agent`.

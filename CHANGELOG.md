@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Phase 4 methodological findings at `internal/phase4_limitations.md`: the grounded adversarial Critic conflicts with the static-rubric LLM-as-judge (which scores narrative similarity to ground-truth paragraphs, not evidence fidelity). Phase 4 code shipped; `docs/11-PIPELINE-PLAN.md` Phase 4 status remains PLANNED pending rubric redesign. Eval transcripts at `internal/eval_critic_20260416-070915.md` (v1 avg 2.3) and `internal/eval_critic_20260416-081412.md` (v2 avg 2.6) document the regression vs Phase 3 baseline 4.9 and the five rubric-design recommendations for future work.
+- Critic prompt rules: PRIMARY-VS-DERIVED (do not rebut macro claims with derived equity prices) and DOMINANT-DRIVER (do not elevate secondary news over dominant macro driver in ALTERNATIVE_HYPOTHESES)
+- Strategist-revision prompt rules: DOMINANCE PRESERVATION and PORTFOLIO UNIVERSE FILTER (non-portfolio tickers may appear only inside verbatim quoted evidence, never as recommendation subjects)
+- `_tag_primary_vs_derived_challenges(dissent_text)` code-level pre-filter: annotates CHALLENGES entries that cite a portfolio equity's small-percent move as counter-evidence to a macro claim with `[AUTO-FILTERED: primary-vs-derived pattern — revision MUST REJECT]` before sending to revision. Original dissent preserved for user-facing response.
+- HTML-comment delimiter around the dissent embed in `data.result` (`<!-- DISSENT_BLOCK_START_DO_NOT_SCORE --> … <!-- DISSENT_BLOCK_END -->`) so the eval judge can strip the Critic's output before scoring while the frontend still receives the full dissent text.
+- `_strip_dissent_block(response)` in `script/run_eval.py`: strips the dissent delimiter block from `data.result` before feeding to the LLM judge so the judge scores only the revised recommendation (v2), not v2+dissent.
+- Smoke test M-CRITIC strengthened assertions: top-level `dissent` key presence, `DISSENT_BLOCK_START_DO_NOT_SCORE` marker in `result`, `### Dissenting perspective` header present, dissent ≥200 chars.
+- Phase 4 `run_critic_agent(query)` orchestrator in `backend/agents.py`: Retriever tool-loop → deterministic `_assemble_evidence_package` → Strategist-draft (tool-free) → Critic (tool-free, `temperature=0.85`) → Strategist-revision (tool-free, skip guard when no challenges)
+- `_assemble_evidence_package(messages)` helper: joins ToolMessage content via `tool_call_id` into numbered `## Tool call N — <name>(<args>)` sections with an evidence-coverage header (counts by tool type and error count)
+- `_parse_critic_challenges(dissent_text)` tolerant parser: counts enumerated CHALLENGES entries; returns 0 when none are found or only the "no material challenges identified" placeholder is present
+- Evidence-identity sentinel: `evidence_for_draft` and `evidence_for_critic` reference the same string object so both downstream calls see identical data
+- Empty-evidence short-circuit: if `_assemble_evidence_package` returns an empty string, `run_critic_agent` returns immediately with a sentinel message and skips all three downstream LLM calls
+- Empty-Critic skip guard: if `_parse_critic_challenges` returns 0, Strategist-revision is skipped and `draft_v1` is used as the final result unchanged
+- New trace event types emitted by `run_critic_agent`: `llm_started`, `llm_completed`, `llm_skipped`, `pipeline_short_circuit`, `result_length_warning`
+- `/api/agent` response now includes top-level `dissent` and `draft` keys in addition to `result`; `result` embeds the Critic's output under a `### Dissenting perspective` header separated by `---`
+- `script/smoke_test.py` `run_m_critic()` milestone: asserts `data.dissent` non-empty (≥200 chars), `data.draft` is a string, `### Dissenting perspective` present in `data.result`, and at least one underlying data tool in `tools_called`; gated behind `--include-critic` CLI flag
 - Phase 3 entity-relationship graph: `entity_relationships` Supabase table (migration 003) storing pre-extracted causal edges from the news corpus
 - Graph extraction script (`script/build_graph.py`) using LLM to extract entity-relationship triples from relevant news articles, with `--dry-run` and `--validate` flags
 - `traverse_entity_graph()` in `backend/agent_tools/graph_tools.py` — 2-query hop pattern (SB003-compliant) for graph traversal at inference time
@@ -13,9 +29,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `ToolCallLimitMiddleware(tool_name="request_graph", run_limit=2)` middleware for the Strategist agent
 
 ### Changed
+- `strategist_agent` renamed to `retriever_agent`; system prompt rewritten as `RETRIEVER_AGENT_PROMPT` (gather-evidence-only, no synthesis, no recommendations); the Retriever's final AIMessage is discarded by `run_critic_agent` after evidence assembly
+- `AGENTS["financial_advisor"]` now aliases `retriever_agent`; `/api/agent` bypasses `AGENTS` entirely and calls `run_critic_agent` directly
+- `/api/agent` response shape: `result` now concatenates the Strategist-revision with a `### Dissenting perspective` section (separator `---`); new top-level `dissent` and `draft` keys added. Programmatic consumers expecting a single-voice response should split on `---` or read the `dissent` key directly
+- `script/smoke_test.py` per-milestone `requests.post` timeouts raised 180 → 240 s to accommodate the 3-LLM-call Phase 4 pipeline
+- `script/smoke_test.py` `ALPHABET_RISK_PHRASES` recalibrated for post-revision GOOGL vocabulary: `["Google Cloud", "YouTube", "Google Search", "antitrust", "artificial intelligence", "GOOGL"]`
+- `script/smoke_test.py` M-RAG milestone now gated behind `--include-rag` (previously ran unconditionally)
 - `ModelCallLimitMiddleware(run_limit=12)` (was 8) to accommodate the additional request_graph tool
 - `STRATEGIST_AGENT_PROMPT` updated with request_graph in WORKFLOW and TOOL DESCRIPTIONS sections
 - Smoke test `DATA_TOOLS` set now includes `traverse_entity_graph`
+
+### Removed
+- Dead `financial_advisor_agent` and its ungrounded sub-tools `call_skeptic_response` / `call_visionary_response` (backend/agents.py) — superseded by the grounded three-role pipeline
+- Orphan `call_financial_reports_retrieval_agent` wrapper (its only consumer was the deleted `financial_advisor_agent`); `financial_reports_retrieval_agent` itself is preserved for `/api/report-agent`
+- Dead `retriever_agent` create_agent scaffold and `RETRIEVER_SYSTEM_PROMPT` / `STRATEGIST_SYSTEM_PROMPT` string constants (replaced by `RETRIEVER_AGENT_PROMPT`)
+- Dead `BASE_ADVISOR_TOOLS`, `RETRIEVER_TOOLS`, `ADVISOR_TOOLS`, `REPORT_TOOLS` lists from `backend/agent_tools/tools.py`; `REPORT_RETRIEVAL_TOOLS` is preserved for `/api/report-agent`
+- `get_portfolio_holdings`, `get_stock_price`, `get_stock_price_history` tool functions from `backend/agent_tools/tools.py` (only referenced by deleted code); `calculator` is preserved in `REPORT_RETRIEVAL_TOOLS`
 
 ### Fixed
 - Q3 eval gap: Strategist prompt now instructs weighing both short-term price action AND overall position P&L (current price vs average cost basis)
