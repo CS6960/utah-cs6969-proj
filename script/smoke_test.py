@@ -188,8 +188,23 @@ def run_m0(base_url: str) -> tuple[bool, str]:
         return False, f"M0 FAIL ({elapsed} ms): {exc}"
 
 
-def run_m1(base_url: str) -> tuple[bool, str]:
-    """M1: Strategist acknowledges news corpus gap when asked about news."""
+def run_m1() -> tuple[bool | None, str]:
+    """M1: legacy Phase 1b news-corpus-gap assertion — now obsolete.
+
+    Phase 1b stubbed request_news and required the Strategist to acknowledge
+    the stubbed gap. Phase 2 shipped the real news corpus; Phase 4 grounds
+    every response in real news evidence. The "gap acknowledgment" signal no
+    longer exists — a Phase 4 response correctly grounds the answer in news
+    content rather than admitting a gap. This milestone is superseded by
+    M-CRITIC (asserts grounded dissent presence) and M0 (asserts tool-loop
+    completeness). Kept as a SKIPPED stub so the test roster documents the
+    deprecation.
+    """
+    return None, "M1 SKIPPED (Phase 1b news-gap assertion obsolete since Phase 2; superseded by M-CRITIC)"
+
+
+def _run_m1_legacy(base_url: str) -> tuple[bool, str]:
+    """Retained for reference only. Not invoked by main()."""
     t0 = time.time()
     try:
         resp = requests.post(
@@ -357,10 +372,10 @@ def main() -> int:
     print(msg)
     results.append(("M0", ok, msg))
 
-    # M1
-    ok, msg = run_m1(base_url)
+    # M1 (legacy, Phase 1b news-gap — always SKIPPED post-Phase-2)
+    status, msg = run_m1()
     print(msg)
-    results.append(("M1", ok, msg))
+    results.append(("M1", status, msg))
 
     # M2
     status, msg = run_m2()
