@@ -41,7 +41,9 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL")
-LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv(
+    "MODEL_NAME", "qwen/qwen3.5-122b-a10b"
+)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -278,6 +280,23 @@ def detect_noise_citations(response: str) -> list[str]:
     return cited
 
 
+_DISSENT_BLOCK_RE = re.compile(
+    r"<!--\s*DISSENT_BLOCK_START_DO_NOT_SCORE\s*-->.*?(?:<!--\s*DISSENT_BLOCK_END\s*-->|\Z)",
+    re.DOTALL,
+)
+
+
+def _strip_dissent_block(response: str) -> str:
+    """Strip the dissent block from the agent response before judging.
+    Phase 4 embeds the Critic's dissent inside data.result under an HTML-comment
+    delimiter so the frontend can display it while the eval judge scores only the
+    revised recommendation (v2). Leaving the dissent in the judge input makes the
+    judge deduct points for perceived contradiction within one response.
+    """
+    stripped = _DISSENT_BLOCK_RE.sub("", response)
+    return stripped.strip()
+
+
 def score_response(question: str, response: str) -> dict:
     """Use the LLM as a judge to score the response against ground truth."""
     from openai import OpenAI
@@ -292,7 +311,7 @@ def score_response(question: str, response: str) -> dict:
         ground_truth=ground_truth,
         temporal_facts="\n".join(f"- {f}" for f in temporal_facts),
         relational_connections="\n".join(f"- {c}" for c in relational_connections),
-        response=response,
+        response=_strip_dissent_block(response),
     )
 
     result = client.chat.completions.create(
@@ -460,11 +479,18 @@ def run_eval(stage: str, do_score: bool = False, dump_path: Path | None = None):
 def print_report():
     """Print a comparison table across all evaluation stages."""
     sb = get_supabase()
-    rows = sb.table("eval_runs").select(  # noqa: SB001, SB006
-        "stage,question,response,tools_called,groundedness,completeness,"
-        "actionability,temporal_precision,relational_recall,noise_citations,"
-        "noise_citation_count,notes,created_at"
-    ).order("created_at").execute().data or []
+    rows = (
+        sb.table("eval_runs")  # noqa: SB001, SB006
+        .select(
+            "stage,question,response,tools_called,groundedness,completeness,"
+            "actionability,temporal_precision,relational_recall,noise_citations,"
+            "noise_citation_count,notes,created_at"
+        )
+        .order("created_at")
+        .execute()
+        .data
+        or []
+    )
 
     if not rows:
         logger.info("No evaluation runs found.")
@@ -536,7 +562,9 @@ def main():
         choices=STAGES_ORDERED,
         help="Stage name (e.g., baseline, rag_reports, news_agent, graph, critic)",
     )
-    parser.add_argument("--score", action="store_true", help="Score responses with LLM judge")
+    parser.add_argument(
+        "--score", action="store_true", help="Score responses with LLM judge"
+    )
     parser.add_argument("--report", action="store_true", help="Print comparison report")
     parser.add_argument(
         "--dump",

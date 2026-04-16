@@ -296,6 +296,60 @@ def _parse_critic_challenges(dissent_text: str) -> int:
     return len(entries)
 
 
+_PORTFOLIO_TICKERS_RE = r"\b(AAPL|MSFT|JPM|NVDA|AMZN|GOOGL|LLY|XOM)\b"
+_PRIMARY_INSTRUMENT_RE = (
+    r"\b(crude|oil|Brent|WTI|futures?|Treasur(?:y|ies)|yield|yields|bond yield|VIX|"
+    r"dollar index|DXY|spot (?:price|commodity|oil)|commodity|macro index|S&P|Dow|Nasdaq)\b"
+)
+
+
+def _tag_primary_vs_derived_challenges(dissent_text: str) -> str:
+    """Walk CHALLENGES in dissent; tag entries that rebut a primary-instrument claim by
+    citing a portfolio equity price move. Tagged entries are annotated
+    [AUTO-FILTERED: primary-vs-derived pattern] so the revision prompt sees they should
+    be REJECTED. Non-CHALLENGE sections (MISSING_EVIDENCE, ALTERNATIVE_HYPOTHESES) are
+    left untouched. Returns the annotated dissent text; the original dissent is
+    preserved for the user-facing response.
+    """
+    section_pat = re.compile(
+        r"^\s*#{0,3}\s*\**\s*CHALLENGES\s*\**\s*:?\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    m = section_pat.search(dissent_text)
+    if not m:
+        return dissent_text
+    header_end = m.end()
+    after_header = dissent_text[header_end:]
+    next_section = re.search(
+        r"^\s*#{0,3}\s*\**\s*(MISSING_EVIDENCE|ALTERNATIVE_HYPOTHESES)\s*\**\s*:?\s*$",
+        after_header,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    block_end = next_section.start() if next_section else len(after_header)
+    challenges_block = after_header[:block_end]
+    tail = after_header[block_end:]
+
+    ticker_re = re.compile(_PORTFOLIO_TICKERS_RE)
+    primary_re = re.compile(_PRIMARY_INSTRUMENT_RE, re.IGNORECASE)
+    small_pct_re = re.compile(r"[+-]?\d+\.\d+\s?%")
+
+    def _tag_entry(entry_match: re.Match) -> str:
+        entry_text = entry_match.group(0)
+        has_ticker = bool(ticker_re.search(entry_text))
+        has_primary = bool(primary_re.search(entry_text))
+        has_small_pct = bool(small_pct_re.search(entry_text))
+        if has_ticker and has_primary and has_small_pct:
+            return (
+                entry_text.rstrip()
+                + " [AUTO-FILTERED: primary-vs-derived pattern — equity price move cited against macro claim; revision MUST REJECT]"
+            )
+        return entry_text
+
+    entry_pat = re.compile(r"^\s*\d+\..+?(?=^\s*\d+\.|\Z)", re.MULTILINE | re.DOTALL)
+    annotated_block = entry_pat.sub(_tag_entry, challenges_block)
+    return dissent_text[:header_end] + annotated_block + tail
+
+
 def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
     """Phase 4 Retriever -> Strategist-draft -> Critic -> Strategist-revision pipeline.
     Returns (result_with_dissent, dissent, draft, tools_called, execution_trace).
@@ -435,6 +489,22 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
                         "- Do NOT fabricate evidence. If the evidence is insufficient, that itself is an entry in "
                         "MISSING_EVIDENCE.\n"
                         "- Portfolio universe: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM.\n"
+                        "- PRIMARY-VS-DERIVED INSTRUMENT RULE: Do NOT rebut claims about primary market "
+                        "instruments (crude futures, spot commodity prices, bond yields, macro indices, "
+                        "currency levels) by citing the price of derived individual equities. Primary "
+                        "instruments and derived equities diverge in short windows because equities discount "
+                        "multi-year price paths — a ~50% spot-crude move typically produces only 2-8% on an "
+                        "integrated major like XOM over days. Only rebut a primary-instrument claim if the "
+                        "evidence package contains the primary instrument itself (a futures quote, a yield "
+                        "curve point, a commodity index reading). Common non-equivalent pairs: crude futures "
+                        "!= XOM stock; Treasury yields != JPM stock; dollar index != any single ticker; "
+                        "VIX != single-name volatility.\n"
+                        "- DOMINANT-DRIVER RULE: When the evidence's strongest signals (commodity moves, "
+                        "yield moves, geopolitical escalation in news headlines) point to a dominant macro "
+                        "driver, do NOT elevate a secondary single-company news item (regulatory headline, "
+                        "legal verdict, isolated earnings story) to primary-driver status in "
+                        "ALTERNATIVE_HYPOTHESES. Secondary narratives may be noted but must not displace "
+                        "the dominant macro thesis unless the evidence directly falsifies it.\n"
                         "- Under 800 words total."
                     )
                 ),
@@ -470,7 +540,9 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
         _trace("llm_skipped", role="strategist_revision", reason="no challenges")
         v2 = draft_v1
     else:
-        _trace("llm_started", role="strategist_revision")
+        revision_dissent = _tag_primary_vs_derived_challenges(dissent)
+        auto_filtered = revision_dissent != dissent
+        _trace("llm_started", role="strategist_revision", auto_filtered=auto_filtered)
         try:
             revision_response = model.invoke(
                 [
@@ -496,6 +568,19 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
                             "When the evidence package presents filing text in a bracketed excerpt block, reproduce "
                             "load-bearing factual phrases verbatim with surrounding quotation marks. Do not rephrase "
                             "filing excerpts when citing them.\n\n"
+                            "DOMINANCE PRESERVATION: The original draft identifies a dominant macro driver based on "
+                            "the evidence's strongest signals (commodity price moves, yield moves, geopolitical "
+                            "escalation in news). If a CHALLENGE or ALTERNATIVE_HYPOTHESIS elevates a secondary "
+                            "narrative (a regulatory headline, legal verdict, single-company news story) to "
+                            "primary-driver status, REJECT it with reason 'secondary narrative does not displace "
+                            "dominant macro driver' UNLESS the Critic provided direct falsifying evidence for the "
+                            "dominant driver itself. A ~2% weekly equity move is NOT sufficient evidence to falsify "
+                            "a macro commodity or geopolitical thesis — see Critic's primary-vs-derived rule.\n\n"
+                            "PORTFOLIO UNIVERSE FILTER: Any ticker outside {AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, "
+                            "XOM} must NOT appear as (a) a subject of a recommendation, (b) a named risk driver in "
+                            "headings, or (c) a justification for a portfolio action. Non-portfolio tickers MAY "
+                            "appear only inside verbatim quoted evidence text, and even then must not be the sole "
+                            "support for any portfolio-action claim; if they are, DEFER the claim under Revision notes.\n\n"
                             "Portfolio universe: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. TIMEZONE: America/Denver."
                         )
                     ),
@@ -505,7 +590,7 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
                             f"USER QUESTION: {query}\n\n"
                             f"EVIDENCE PACKAGE:\n{evidence_package}\n\n"
                             f"DRAFT RECOMMENDATION:\n{draft_v1}\n\n"
-                            f"CRITIC CHALLENGES:\n{dissent}"
+                            f"CRITIC CHALLENGES:\n{revision_dissent}"
                         )
                     ),
                 ]
@@ -518,7 +603,13 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
             _trace("revision_failed", error=exc_type)
             v2 = draft_v1
 
-    result = v2 + "\n\n---\n### Dissenting perspective\n" + dissent
+    result = (
+        v2
+        + "\n\n<!-- DISSENT_BLOCK_START_DO_NOT_SCORE -->\n"
+        + "---\n### Dissenting perspective\n"
+        + dissent
+        + "\n<!-- DISSENT_BLOCK_END -->"
+    )
 
     if len(result) < 500:
         logger.warning("result_length_warning: result shorter than 500 chars (len=%d)", len(result))

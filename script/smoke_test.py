@@ -182,7 +182,10 @@ def run_m0(base_url: str) -> tuple[bool, str]:
             f"tools_called {tools_called} has no underlying data tool name"
         )
         assert len(result) > 500, f"response too short ({len(result)} chars)"
-        return True, f"M0 PASS ({elapsed} ms, result {len(result)} chars, tools: {tools_called})"
+        return (
+            True,
+            f"M0 PASS ({elapsed} ms, result {len(result)} chars, tools: {tools_called})",
+        )
     except Exception as exc:
         elapsed = int((time.time() - t0) * 1000)
         return False, f"M0 FAIL ({elapsed} ms): {exc}"
@@ -200,7 +203,10 @@ def run_m1() -> tuple[bool | None, str]:
     completeness). Kept as a SKIPPED stub so the test roster documents the
     deprecation.
     """
-    return None, "M1 SKIPPED (Phase 1b news-gap assertion obsolete since Phase 2; superseded by M-CRITIC)"
+    return (
+        None,
+        "M1 SKIPPED (Phase 1b news-gap assertion obsolete since Phase 2; superseded by M-CRITIC)",
+    )
 
 
 def _run_m1_legacy(base_url: str) -> tuple[bool, str]:
@@ -209,7 +215,9 @@ def _run_m1_legacy(base_url: str) -> tuple[bool, str]:
     try:
         resp = requests.post(
             f"{base_url}/api/agent",
-            json={"query": "What does the news say about IRGC threats to my tech holdings this week?"},
+            json={
+                "query": "What does the news say about IRGC threats to my tech holdings this week?"
+            },
             timeout=240,
         )
         elapsed = int((time.time() - t0) * 1000)
@@ -227,7 +235,10 @@ def _run_m1_legacy(base_url: str) -> tuple[bool, str]:
 
 def run_m2() -> tuple[bool | None, str]:
     """M2: SKIPPED — error propagation not deterministically triggerable black-box."""
-    return None, "M2 SKIPPED (manual verification only — not deterministically triggerable from a black-box smoke test)"
+    return (
+        None,
+        "M2 SKIPPED (manual verification only — not deterministically triggerable from a black-box smoke test)",
+    )
 
 
 def run_m3(base_url: str) -> tuple[bool, str]:
@@ -240,7 +251,9 @@ def run_m3(base_url: str) -> tuple[bool, str]:
             timeout=240,
         )
         elapsed = int((time.time() - t0) * 1000)
-        assert resp.status_code == 200, f"/api/report-agent returned HTTP {resp.status_code}"
+        assert resp.status_code == 200, (
+            f"/api/report-agent returned HTTP {resp.status_code}"
+        )
         return True, f"M3 PASS ({elapsed} ms, /api/report-agent HTTP 200)"
     except Exception as exc:
         elapsed = int((time.time() - t0) * 1000)
@@ -275,8 +288,7 @@ def run_m_rag(base_url: str) -> tuple[bool, str]:
             f"'request_filings' not in tools_called: {tools_called}"
         )
         assert any(name in result for name in ("Alphabet", "Google")), (
-            f"response does not mention Alphabet or Google. "
-            f"Snippet: {result[:300]!r}"
+            f"response does not mention Alphabet or Google. Snippet: {result[:300]!r}"
         )
         assert any(phrase in result for phrase in ALPHABET_RISK_PHRASES), (
             f"response contains none of ALPHABET_RISK_PHRASES "
@@ -284,7 +296,10 @@ def run_m_rag(base_url: str) -> tuple[bool, str]:
         )
         assert len(result) > 500, f"response too short ({len(result)} chars)"
 
-        return True, f"M-RAG PASS ({elapsed} ms, result {len(result)} chars, tools: {tools_called})"
+        return (
+            True,
+            f"M-RAG PASS ({elapsed} ms, result {len(result)} chars, tools: {tools_called})",
+        )
     except Exception as exc:
         elapsed = int((time.time() - t0) * 1000)
         return False, f"M-RAG FAIL ({elapsed} ms): {exc}"
@@ -308,7 +323,13 @@ def run_m_critic(base_url: str) -> tuple[bool, str]:
         tools_called = body.get("tools_called") or []
 
         assert isinstance(draft, str), f"draft not a string: {type(draft).__name__}"
+        assert "dissent" in body, "top-level 'dissent' key missing from API response"
+        assert dissent.strip(), "dissent field is empty or whitespace"
         assert len(dissent) >= 200, f"dissent too short ({len(dissent)} chars)"
+        assert "DISSENT_BLOCK_START_DO_NOT_SCORE" in result, (
+            "Dissent-block delimiter missing from result — judge will score dissent "
+            "alongside recommendation. Result prefix: " + repr(result[:200])
+        )
         assert "### Dissenting perspective" in result, (
             f"'### Dissenting perspective' header not embedded in result. "
             f"Result prefix: {result[:200]!r}"
@@ -328,7 +349,9 @@ def run_m_critic(base_url: str) -> tuple[bool, str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Phase 1b/4 Strategist + Critic smoke test")
+    parser = argparse.ArgumentParser(
+        description="Phase 1b/4 Strategist + Critic smoke test"
+    )
     parser.add_argument(
         "--base-url",
         default="http://localhost:8000",
