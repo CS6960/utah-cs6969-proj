@@ -91,72 +91,90 @@ PRESET_QUESTIONS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Ground truth answers (March 24-31, 2026 evaluation window)
+# Ground truth answers (March 24 - April 2, 2026 evaluation window)
+# Prices cover Mar 24 - Apr 2 (8 trading days). News covers Mar 13 - Apr 2.
 # ---------------------------------------------------------------------------
 
 GROUND_TRUTH = {
     "What is my biggest portfolio risk?": (
-        "Iran war escalation is the dominant risk. 5 of 8 holdings (AAPL, NVDA, MSFT, GOOGL, AMZN) "
-        "are tech companies named on the IRGC retaliatory strike target list. The oil shock from "
-        "the Strait of Hormuz closure is driving inflation fears and broad market selloff. "
-        "The portfolio's tech-heavy tilt amplifies exposure to geopolitical risk. "
-        "The Dow entered correction on March 27 and the S&P 500 had its worst month since Dec 2022."
+        "Iran-conflict escalation and the associated energy-supply shock is the dominant risk as of "
+        "April 2, 2026. Tech exposure (AAPL, MSFT, GOOGL, AMZN, NVDA) is roughly 45% of NAV — the "
+        "largest single-sector concentration — and the portfolio's big-tech holdings all cite "
+        "geopolitical tensions and supply-chain disruption as material risks in their 10-Ks. News "
+        "from April 2 reports oil prices surging >50% on the disruption and JPMorgan CEO Jamie Dimon "
+        "explicitly warning that 'a prolonged closure of the Strait of Hormuz' poses serious global "
+        "economic effects. JPM itself is ~16% of NAV and exposed to trading/credit stress from a "
+        "prolonged disruption. The concentration risk should be expressed in % of NAV, not count of "
+        "positions."
     ),
     "Am I diversified enough?": (
-        "The portfolio is tech-concentrated (5 of 8 positions), but the 3 non-tech holdings "
-        "(JPM, LLY, XOM) proved their diversification value during the week. JPM and LLY acted as "
-        "flight-to-quality defensive anchors on risk-off days. XOM benefited directly from the crude "
-        "oil surge (+42% YTD). The diversification that exists is working, but the tech tilt means "
-        "the portfolio is net-negative during the Iran crisis."
+        "The portfolio is under-diversified: tech (~45% of NAV) plus AAPL and JPM individually near "
+        "~17% each create meaningful concentration, and cash is ~20% of NAV. The three non-tech "
+        "holdings (JPM ~16%, LLY ~12%, XOM ~7%) each hedge a different macro driver — financial "
+        "stability, recession-resistant healthcare demand (GLP-1), and energy-price exposure — which "
+        "is the diversification that is working. The April 1-2 tape (tech rebound, XOM pulling back) "
+        "illustrates why weight framing matters: the Iran narrative is partially de-escalating "
+        "(Iran/Oman drafting a Hormuz traffic protocol per April 2 news) yet the sector tilt would "
+        "still drive outsized portfolio swings on any re-escalation."
     ),
     "Which holdings look strongest?": (
-        "XOM is the strongest performer at +42% YTD driven by the crude oil surge from the Iran war. "
-        "JPM is a flight-to-quality winner, leading S&P gainers on risk-off days with 17% ROTCE "
-        "and trading at 14x P/E as a valuation sanctuary. LLY is the other defensive anchor with "
-        "recession-resistant GLP-1 demand; JPM built a $2.93B stake and analyst targets reach $1,300. "
-        "All 5 tech holdings are under pressure from the same geopolitical threat."
+        "On the 8-day price tape (Mar 24 - Apr 2), XOM was strongest through Mar 31 (+2.59% WoW on "
+        "the Iran oil-shock narrative) but pulled back Apr 1-2 as the Hormuz traffic-protocol "
+        "headline and tech rebound shifted sentiment. LLY is the defensive growth standout with an "
+        "April 2 Bank of America note calling its new oral GLP-1 therapy Foundayo the 'preferred oral "
+        "GLP-1' and a Medicare-coverage policy tailwind from the Trump GLP-1 plan. JPM is a "
+        "flight-to-quality anchor during the crisis, cited by Dimon himself on the Hormuz risk. Tech "
+        "(AAPL, MSFT, NVDA, GOOGL, AMZN) rebounded on Apr 1-2 but remains the portfolio's risk "
+        "concentration and faces supply-chain / inflation pressure per 10-K language."
     ),
     "Where should new cash go?": (
-        "Defensive positions: JPM (valuation sanctuary at 14x P/E, flight-to-quality beneficiary) "
-        "and LLY (secular growth immune to geopolitical cycle, strong institutional accumulation). "
-        "XOM if you believe the Iran conflict persists and oil stays elevated. "
-        "Avoid adding to tech positions while the IRGC threat and broad risk-off sentiment persist."
+        "With cash at ~20% of NAV ($12,500), the deployable capital should bias to defensive growth "
+        "and non-tech diversifiers: LLY (GLP-1 secular demand, April 2 Foundayo catalyst, Medicare "
+        "policy tailwind) and JPM (valuation anchor, flight-to-quality beneficiary despite Dimon's "
+        "own Hormuz warning). XOM is a conditional energy hedge — attractive if the Iran conflict "
+        "re-escalates, less attractive given the April 1-2 oil pullback and Hormuz de-escalation "
+        "signal. Avoid adding to tech while concentration is already ~45% of NAV and supply-chain / "
+        "inflation risk is live. Cash weight is not itself a problem — keeping dry powder for re-"
+        "escalation or a sharper tech drawdown is defensible."
     ),
 }
 
 # ---------------------------------------------------------------------------
 # Temporal facts — key date-stamped facts the agent should cite
 # The judge uses these to assess temporal precision.
+# Window: March 24 - April 2, 2026 (news through Apr 2, last close Apr 2).
 # ---------------------------------------------------------------------------
 
 TEMPORAL_FACTS = {
     "What is my biggest portfolio risk?": [
-        "US/Israel struck Iran's energy infrastructure on Feb 28, 2026",
-        "Iran closed the Strait of Hormuz on March 4, 2026",
-        "Brent crude surged 57% in March 2026, past $120/bbl",
-        "S&P 500 fell 6.8% in March 2026 — worst month since Dec 2022",
-        "Dow entered correction on March 27, 2026",
-        "IRGC named tech companies on retaliatory target list (late March 2026)",
-        "March 31 de-escalation relief rally: S&P +2.91%",
+        "News window runs through April 2, 2026; last close is April 2, 2026",
+        "Bloomberg Apr 2: 'war on Iran has disrupted oil supply from the region, causing prices to rise more than 50%'",
+        "Simply Wall St Apr 2: Jamie Dimon warns 'a prolonged closure of the Strait of Hormuz' poses serious global economic effects",
+        "MT Newswires Apr 2: Iran, Oman drafting Hormuz Strait traffic protocol (potential de-escalation signal)",
+        "Bloomberg Apr 2: 'Bonds' Oil-Driven Selloff' — investor focus on surging energy prices as drag on growth",
+        "Tech weights (AAPL, MSFT, GOOGL, AMZN, NVDA) sum to ~45% of NAV — largest sector concentration",
+        "AAPL, MSFT, GOOGL, AMZN, NVDA 10-Ks all cite geopolitical tensions / supply-chain risk",
     ],
     "Am I diversified enough?": [
-        "XOM +42% YTD as of late March 2026 due to oil surge",
-        "JPM led S&P gainers on risk-off days during March 24-31 week",
-        "LLY acted as defensive anchor during March 2026 selloff",
-        "S&P 500 down 6.8% in March 2026",
-        "March 26-27 consecutive selloff days (-1.74%, -1.67%)",
+        "Tech exposure ~45% of NAV (AAPL ~17%, MSFT ~11%, GOOGL ~9%, AMZN ~5%, NVDA ~4%)",
+        "Non-tech holdings JPM ~16%, LLY ~12%, XOM ~7% — three distinct macro hedges",
+        "Cash ~20% of NAV ($12,500 USD)",
+        "April 1-2 tape: tech rebounded (AAPL +0.84%, MSFT +0.89%, NVDA +1.71%), XOM pulled back (-5.3% from Mar 31)",
+        "Hormuz traffic-protocol news April 2 suggests partial de-escalation",
     ],
     "Which holdings look strongest?": [
-        "XOM +42% YTD driven by crude surge from Iran war (March 2026)",
-        "JPM 17% ROTCE, 14x P/E — flight-to-quality during March selloff",
-        "LLY analyst targets up to $1,300; JPM built $2.93B stake",
-        "5 tech holdings under IRGC threat as of late March 2026",
+        "XOM closed Mar 31 at $169.66 (+2.59% WoW) then pulled back to $160.69 on Apr 2",
+        "Tech rebounded Apr 1-2 (AAPL $255.92, MSFT $373.46, NVDA $177.39 on Apr 2)",
+        "LLY Apr 2 Bank of America note: Foundayo 'preferred oral GLP-1'; Trump Medicare coverage policy tailwind",
+        "JPM ~16% of NAV, Dimon Apr 2 Hormuz warning",
+        "Price window: Mar 24 - Apr 2, 2026 (8 trading days)",
     ],
     "Where should new cash go?": [
-        "JPM at 14x P/E as of March 2026 — valuation sanctuary",
-        "LLY institutional accumulation during March 2026 crisis",
-        "XOM benefiting from oil staying above $120/bbl (March 2026)",
-        "IRGC threat to tech companies ongoing as of March 31, 2026",
+        "Cash available: $12,500 (~20% of NAV $63,634.92 as of Apr 2)",
+        "LLY Apr 2 catalyst: Foundayo oral GLP-1, Medicare GLP-1 coverage policy",
+        "JPM ~16% of NAV already — consider incremental add vs. concentration",
+        "XOM pulled back $169.66 → $160.69 on Apr 1-2 as Hormuz protocol news shifted sentiment",
+        "Tech already ~45% of NAV — avoid adding",
     ],
 }
 
@@ -167,31 +185,31 @@ TEMPORAL_FACTS = {
 
 RELATIONAL_CONNECTIONS = {
     "What is my biggest portfolio risk?": [
-        "Iran conflict → Strait of Hormuz closure → oil price surge",
-        "Oil shock → inflation fears → broad equity market selloff",
-        "IRGC target list → simultaneous threat to 5 tech holdings (sector concentration risk)",
-        "Tech concentration (5/8) → amplified portfolio exposure to single geopolitical event",
-        "Oil surge → XOM benefits while tech sells off (inverse dynamic within portfolio)",
+        "Iran conflict → Strait of Hormuz disruption → oil price surge (>50% per Apr 2 news)",
+        "Oil shock → inflation fears → bond selloff → equity pressure (Apr 2 Bloomberg thesis)",
+        "Tech concentration (~45% of NAV) → amplified portfolio exposure to a single macro driver",
+        "Oil move → XOM/tech inverse dynamic (XOM up through Mar 31, retraced Apr 1-2 with tech rebound)",
+        "Hormuz protocol news → partial de-escalation signal → possible reversal of the risk-off trade",
     ],
     "Am I diversified enough?": [
-        "Iran conflict creates opposite effects within portfolio: XOM gains vs tech losses",
-        "Flight-to-quality dynamic: risk-off days → money flows from tech into JPM and LLY",
-        "Oil surge from Hormuz closure → direct XOM benefit (energy hedge working as designed)",
-        "Tech sector correlation: all 5 tech names affected by same IRGC threat (diversification failure within tech)",
-        "3 non-tech holdings (JPM, LLY, XOM) each hedge a different risk: "
+        "Iran conflict creates opposite effects within portfolio: XOM gains vs tech losses (reversing Apr 1-2)",
+        "Flight-to-quality dynamic: risk-off → flows into JPM and LLY as defensive anchors",
+        "Energy hedge: XOM weight (~7%) gives partial exposure to oil upside without over-concentration",
+        "Tech sector correlation: all 5 tech names co-move on macro risk (intra-sector diversification failure)",
+        "3 non-tech holdings (JPM ~16%, LLY ~12%, XOM ~7%) each hedge a different macro driver: "
         "financial stability, healthcare demand, energy prices",
     ],
     "Which holdings look strongest?": [
-        "XOM strength is causally linked to Iran conflict → oil price surge",
-        "JPM strength is causally linked to flight-to-quality flows during geopolitical crisis",
-        "LLY strength is causally linked to recession-resistant healthcare demand (GLP-1)",
-        "Tech weakness is collectively linked to IRGC threats and macro risk-off sentiment",
+        "XOM early-window strength linked to Iran conflict → oil surge, then Apr 1-2 pullback as Hormuz protocol news hit",
+        "JPM strength linked to flight-to-quality flows during geopolitical crisis (Dimon Hormuz warning itself is a risk signal)",
+        "LLY strength linked to recession-resistant GLP-1 demand + Apr 2 Foundayo catalyst + Medicare policy tailwind",
+        "Tech weakness through Mar 31 linked to inflation / supply-chain risk, rebounded Apr 1-2 on partial de-escalation",
     ],
     "Where should new cash go?": [
-        "JPM recommendation linked to flight-to-quality dynamic during ongoing geopolitical crisis",
-        "LLY recommendation linked to secular healthcare demand being immune to geopolitical cycle",
-        "XOM recommendation conditional on Iran conflict persistence → sustained oil prices",
-        "Tech avoidance linked to IRGC threat + macro risk-off creating correlated downside across all 5 tech holdings",
+        "JPM recommendation linked to flight-to-quality dynamic in ongoing geopolitical crisis — but JPM already ~16% of NAV",
+        "LLY recommendation linked to secular GLP-1 demand + Apr 2 Foundayo + Medicare policy (non-cyclical)",
+        "XOM recommendation conditional on re-escalation — weakened by Apr 1-2 pullback and Hormuz protocol signal",
+        "Tech avoidance linked to ~45% NAV concentration already + live supply-chain / inflation risk",
     ],
 }
 

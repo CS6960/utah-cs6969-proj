@@ -268,3 +268,53 @@ def get_live_holdings(symbols: list[str]) -> dict[str, Any]:
 
 def get_live_holding(symbol: str) -> dict[str, Any]:
     return get_live_holdings([symbol])["holdings"][0]
+
+
+def get_portfolio_weights() -> dict[str, Any]:
+    """Return each position's dollar weight as % of total NAV (equities + cash).
+
+    Weights are computed from the latest closing price. `equityWeightPct` +
+    `cashWeightPct` sums to 100 (modulo rounding). Position `weightPctOfEquity`
+    is the share within invested capital only, for comparisons that exclude
+    the cash sleeve.
+    """
+    data = get_live_portfolio()
+
+    positions: list[dict[str, Any]] = []
+    total_market_value = 0.0
+    for h in data["holdings"]:
+        mv = float(h["shares"]) * float(h["price"])
+        positions.append(
+            {
+                "symbol": h["symbol"],
+                "name": h.get("name") or h["symbol"],
+                "shares": float(h["shares"]),
+                "price": float(h["price"]),
+                "marketValue": round(mv, 2),
+            }
+        )
+        total_market_value += mv
+
+    cash_total = 0.0
+    for cb in data.get("cashBalances") or []:
+        cash_total += float(cb["cashBalance"])
+
+    total_nav = total_market_value + cash_total
+    safe_nav = total_nav if total_nav > 0 else 1.0
+    safe_equity = total_market_value if total_market_value > 0 else 1.0
+
+    for p in positions:
+        p["weightPct"] = round(p["marketValue"] / safe_nav * 100.0, 2)
+        p["weightPctOfEquity"] = round(p["marketValue"] / safe_equity * 100.0, 2)
+
+    positions.sort(key=lambda p: p["weightPct"], reverse=True)
+
+    return {
+        "positions": positions,
+        "cashMarketValue": round(cash_total, 2),
+        "cashWeightPct": round(cash_total / safe_nav * 100.0, 2),
+        "equityMarketValue": round(total_market_value, 2),
+        "equityWeightPct": round(total_market_value / safe_nav * 100.0, 2),
+        "totalNav": round(total_nav, 2),
+        "latestTradingDate": data.get("latestTradingDate"),
+    }

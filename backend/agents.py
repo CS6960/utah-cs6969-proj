@@ -430,6 +430,13 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
                         "load-bearing factual phrases verbatim with surrounding quotation marks. Do not rephrase "
                         "filing excerpts when citing them.\n"
                         "- Acknowledge GAPS and ERRORS from the evidence package; never synthesize over them.\n"
+                        "- COST-BASIS-AWARE TRIMS: When recommending trim / de-risk / profit-take actions, "
+                        "reason from each candidate position's unrealized P/L (shares * (price - avgCost)) "
+                        "and weight, both of which are in PORTFOLIO CONTEXT. Prefer taking gains on positions "
+                        "with large unrealized gains; for positions near or below cost basis, propose tight "
+                        "stop-losses just below breakeven instead of outright trims. Do NOT issue blanket "
+                        "sector-weight targets (e.g. 'reduce tech to 30% of NAV') as the sole rationale — "
+                        "the avgCost and current price data are available, so per-position logic is expected.\n"
                         "- Under 1500 words."
                     )
                 ),
@@ -581,6 +588,13 @@ def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
                             "headings, or (c) a justification for a portfolio action. Non-portfolio tickers MAY "
                             "appear only inside verbatim quoted evidence text, and even then must not be the sole "
                             "support for any portfolio-action claim; if they are, DEFER the claim under Revision notes.\n\n"
+                            "COST-BASIS-AWARE TRIMS: When the revised recommendation proposes trim / de-risk / "
+                            "profit-take actions, reason from each candidate position's unrealized P/L (shares * "
+                            "(price - avgCost)) and weight from PORTFOLIO CONTEXT. Prefer taking gains on positions "
+                            "with large unrealized gains; for positions near or below cost basis, propose tight "
+                            "stop-losses just below breakeven instead of outright trims. Blanket sector-weight "
+                            "targets ('reduce tech to 30% of NAV') without per-position cost-basis reasoning are "
+                            "considered insufficient and must be refined in the revision.\n\n"
                             "Portfolio universe: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. TIMEZONE: America/Denver."
                         )
                     ),

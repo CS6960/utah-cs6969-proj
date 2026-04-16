@@ -15,6 +15,115 @@ This document describes the backend agents, their tools, the Strategist-orchestr
 
 Each phase must be implemented, evaluated, and pass its gate criteria before work begins on the next phase. See `docs/11-PIPELINE-PLAN.md` for gate criteria, rationale, and deliverables; `internal/phase1b_agent_pivot.md` for the pivot memo; `docs/09-EVALUATION.md` for scoring methodology.
 
+## Final Design (post-Phase 4, 2026-04-16)
+
+This section is the authoritative snapshot of the current production design. Per-phase sections below are preserved as the evolution narrative.
+
+### Pipeline (one invocation of `POST /api/agent`)
+
+```
+User Query
+    │
+    ▼
+run_critic_agent(query)                               [backend/agents.py]
+    │
+    ├─ build_portfolio_context()                      [backend/agent_tools/strategist_tools.py]
+    │     ├─ get_live_portfolio()                     → holdings, cashBalances, latestTradingDate
+    │     └─ get_portfolio_weights()                  → per-position $ / %NAV / %equity, sorted desc
+    │         └─ renders POSITION WEIGHTS block + CONCENTRATION FRAMING directive
+    │
+    ├─ retriever_agent.invoke()                       [LangChain create_agent, 4 typed tools]
+    │     ├─ request_news(scope, tickers)             → NEWS section in EvidenceResponse
+    │     ├─ request_prices(tickers, start, end)      → PRICE_HISTORY section
+    │     ├─ request_filings(scope, tickers)          → FILINGS section (RAG cap: 3/request)
+    │     └─ request_graph(scope, entities, hops)     → GRAPH_CONNECTIONS section
+    │     (middleware: 12 total model calls, 2 calls per tool)
+    │
+    ├─ _assemble_evidence_package(messages)           [deterministic, tool_call_id joins]
+    │     → numbered "## Tool call N — name(args)" blocks + coverage header
+    │     → empty result triggers pipeline_short_circuit; rest of pipeline skipped
+    │
+    ├─ Strategist draft  (model.invoke, tool-free, ≤1500 words)
+    │     Sees: portfolio_context (with weights), query, evidence_package
+    │     Rules: evidence-only citations, verbatim filing quotes, cost-basis-aware trims,
+    │            portfolio universe filter
+    │     → draft_v1
+    │
+    ├─ Critic  (model.bind(temperature=0.85).invoke, tool-free, ≤800 words)
+    │     Sees: portfolio_context, query, evidence_package, draft_v1
+    │     Output: CHALLENGES / MISSING_EVIDENCE / ALTERNATIVE_HYPOTHESES
+    │     Rules: primary-vs-derived (don't rebut macro with equity %), dominant-driver
+    │     → dissent;  _parse_critic_challenges(dissent) counts enumerated entries
+    │     → 0 challenges → skip revision, return draft_v1 as v2
+    │
+    ├─ _tag_primary_vs_derived_challenges(dissent)    [code pre-filter]
+    │     Annotates CHALLENGES entries that rebut a primary-instrument claim by citing
+    │     a portfolio equity % move with "[AUTO-FILTERED: ... revision MUST REJECT]"
+    │     Original dissent preserved for user-facing response.
+    │
+    └─ Strategist revision  (model.invoke, tool-free, ≤1500 words)
+          Sees: portfolio_context, query, evidence_package, draft_v1, annotated dissent
+          Rules: dominance preservation, portfolio universe filter, cost-basis-aware trims,
+                 ACCEPTED/REJECTED per CHALLENGE, DEFERRED per MISSING_EVIDENCE
+          → v2;  result = v2 + "<!-- DISSENT_BLOCK_START_DO_NOT_SCORE -->\n---\n### Dissenting perspective\n"
+                          + dissent + "\n<!-- DISSENT_BLOCK_END -->"
+
+Response: {result, dissent, draft, tools_called, execution_trace}
+```
+
+### Portfolio context (always visible to all four LLM stages)
+
+`build_portfolio_context()` renders one string that is injected into the Retriever HumanMessage, the Strategist-draft HumanMessage, the Critic HumanMessage, and the Strategist-revision HumanMessage. It contains:
+
+- **PORTFOLIO HOLDINGS** — per-symbol: name, shares (4 dp), current price, avgCost, day change
+- **CASH BALANCES** — per-currency cash amounts
+- **LATEST TRADING DATE** — ISO date of the latest close
+- **POSITION WEIGHTS** — per-symbol `$ marketValue`, `% of NAV`, `% of equity`, sorted desc; equity/cash split; total NAV
+- **CONCENTRATION FRAMING** — a one-line directive instructing the model to express concentration in % of NAV (never "X of 8 holdings")
+
+The weight block is computed by `get_portfolio_weights()` in `backend/portfolio.py`. Weights are fresh per request (no cache) and include a fallback: if the computation raises, the weight block is omitted and the rest of the context is still rendered.
+
+### Strategist / Critic prompt guardrails
+
+Rules encoded in the prompts that govern recommendation quality:
+
+| Rule | Where | Purpose |
+|------|-------|---------|
+| **Evidence-only citations** | draft, revision | No facts outside `EVIDENCE PACKAGE`; verbatim quotes for filing excerpts |
+| **Portfolio universe filter** | draft, revision | Non-portfolio tickers (e.g. META, TSLA) may appear only inside verbatim quotes, never as action subjects |
+| **Cost-basis-aware trims** | draft, revision | Trim / de-risk / profit-take actions must cite per-position `shares * (price - avgCost)` and propose tight stops near breakeven for positions close to cost; blanket sector-weight targets are rejected |
+| **Concentration framing** | portfolio context directive | Concentration expressed in % of NAV, never position count |
+| **Primary-vs-derived instrument** | Critic, code pre-filter | Critic cannot rebut primary-instrument claims (crude futures, yields, macro indices) by citing derived equity % moves; violations are auto-tagged for revision REJECT |
+| **Dominant-driver** | Critic, revision (DOMINANCE PRESERVATION) | Secondary narratives (regulatory headlines, legal verdicts, single-company news) do not displace the dominant macro driver in ALTERNATIVE_HYPOTHESES unless the Critic directly falsifies the dominant driver |
+| **Acknowledge GAPS/ERRORS** | draft | Never synthesize over missing evidence; cite the `GAPS` or `ERRORS` line instead |
+
+### Dissent block delimiter
+
+The final `result` string embeds the Critic's dissent under an HTML-comment delimiter:
+
+```html
+<!-- DISSENT_BLOCK_START_DO_NOT_SCORE -->
+---
+### Dissenting perspective
+<dissent text>
+<!-- DISSENT_BLOCK_END -->
+```
+
+The delimiter is machine-strippable. `script/run_eval.py` strips it via `_strip_dissent_block()` before sending the response to the LLM judge so the judge scores only the revised recommendation (v2), not v2+dissent. The frontend displays the full block as-is.
+
+### Data sources
+
+| Source | Table / API | Window |
+|--------|-------------|--------|
+| Holdings | `portfolio_positions` (shares, avg_cost) | live |
+| Cash | `portfolio_cash` (currency, cash_balance) | live |
+| Stock prices | `stock_prices` (close) | 2026-03-24 → 2026-04-02 (8 trading days, 8 tickers) |
+| News | `news_articles` | 2026-03-13 → 2026-04-02 (90 articles, includes noise) |
+| Filings | `document_tree_nodes` + `match_document_tree_nodes` RPC | 10-K FY2025 for each of 8 tickers |
+| Graph | `entity_relationships` (source, relationship, target, evidence) | ~162 edges pre-extracted from news corpus |
+
+Portfolio universe is fixed: **AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM**.
+
 ## Target Architecture: Three-Role Grounded Critic Pipeline (Phase 4)
 
 ```

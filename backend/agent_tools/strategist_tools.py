@@ -23,7 +23,7 @@ from langchain_core.tools import tool
 
 from agent_tools.financial_reports_tools import retrieve_embedded_financial_report_info
 from agent_tools.graph_tools import traverse_entity_graph
-from portfolio import get_live_portfolio
+from portfolio import get_live_portfolio, get_portfolio_weights
 from stock_prices import get_price_history_for_symbols
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,32 @@ def build_portfolio_context() -> str:
     latest = data.get("latestTradingDate")
     if latest:
         lines.append(f"LATEST TRADING DATE: {latest}")
+
+    try:
+        weights = get_portfolio_weights()
+    except Exception as exc:  # pragma: no cover — context must not crash the agent
+        logger.warning("get_portfolio_weights failed, skipping weight block: %s", exc)
+        return "\n".join(lines)
+
+    lines.append("")
+    lines.append(
+        f"POSITION WEIGHTS (% of total NAV ${weights['totalNav']:,.2f}, "
+        f"equity {weights['equityWeightPct']:.2f}% / cash {weights['cashWeightPct']:.2f}%):"
+    )
+    for p in weights["positions"]:
+        lines.append(
+            f"  {p['symbol']}: ${p['marketValue']:,.2f}  "
+            f"({p['weightPct']:.2f}% of NAV, {p['weightPctOfEquity']:.2f}% of equity)"
+        )
+    lines.append(
+        f"  CASH: ${weights['cashMarketValue']:,.2f}  ({weights['cashWeightPct']:.2f}% of NAV)"
+    )
+    lines.append(
+        "CONCENTRATION FRAMING: When analyzing concentration, sector exposure, or "
+        "diversification, express claims in % of NAV (or % of equity), not count of "
+        "positions. A '5 of 8 holdings' framing is incorrect; '45% of NAV in tech' is correct."
+    )
+
     return "\n".join(lines)
 
 
