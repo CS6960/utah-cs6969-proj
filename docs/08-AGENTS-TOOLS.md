@@ -81,7 +81,9 @@ ERRORS: <explicit errors or "none">
 
 The `gaps` and `errors` fields are the critical addition. They make the agent self-diagnosing: if `get_price_history_for_symbols` returns an empty set, the `gaps` field records "no price data for TICKER between START and END"; if the RPC raises, the `errors` field records the exception string. Both land in the Strategist's context window, so its final response cites the missing evidence rather than hallucinating around it. This directly closes the Milestone 2 human-eval finding that the LLM judge could not detect infrastructure bugs (cash excluded, empty filings, missing prices).
 
-## Current State: Phase 0 (Baseline)
+## Archived: Phase 0 (Baseline)
+
+> **Historical note.** The sections below describe the pre-pipeline Phase 0 architecture. These tools (`ADVISOR_TOOLS`, `REPORT_TOOLS`, `DuckDuckGoSearchResults`, `YahooFinanceNewsTool`, `get_stock_price`, `get_portfolio_holdings`, `get_stock_price_history`, `calculator` — helpers only; `calculator` is retained inside `REPORT_RETRIEVAL_TOOLS`) were removed during the Phase 1b and Phase 4 refactors. `/api/agent` now runs the Phase 4 three-role pipeline described above; `/api/report-agent` runs `financial_reports_retrieval_agent` over `REPORT_RETRIEVAL_TOOLS`. This section is preserved for historical context only.
 
 ### Files
 
@@ -240,14 +242,16 @@ Output: Three structured sections: CHALLENGES (enumerated), MISSING_EVIDENCE, AL
 
 `POST /api/report-agent` is **unchanged** — still routes to `financial_reports_retrieval_agent` via `run_agent`. The Phase 4 changes do not touch the reports-embedding workflow.
 
-### Gate criteria
+### Gate criteria (Phase 1b — historical, superseded by Phase 4)
 
-- `/api/agent` routes to `run_strategist_agent(query)`
+> **Historical note.** Phase 1b gate was met 2026-04-11; Phase 4 then renamed `strategist_agent` → `retriever_agent`, replaced `run_strategist_agent` with `run_critic_agent`, and raised `ModelCallLimitMiddleware(run_limit=12)` to accommodate the 4th tool (`request_graph`). The criteria below describe Phase 1b at the time it shipped; they remain satisfied under Phase 4 except where explicitly superseded.
+
+- `/api/agent` routes to the Phase-4 `run_critic_agent(query)` (was: `run_strategist_agent`)
 - The Phase 1 pipeline module is deleted
-- `backend/agent_tools/strategist_tools.py` exports `EvidenceResponse`, `request_filings`, `request_prices`, `request_news`, `build_portfolio_context`, `serialize_for_llm`
+- `backend/agent_tools/strategist_tools.py` exports `EvidenceResponse`, `request_filings`, `request_prices`, `request_news`, `request_graph`, `build_portfolio_context`, `serialize_for_llm`
 - `build_portfolio_context` includes cash
-- Tool output always includes `SCOPE:`, `TOOLS_CALLED:`, `FILINGS:`, `PRICE_HISTORY:`, `GAPS:`, `ERRORS:` sections (even when empty)
-- `ModelCallLimitMiddleware(run_limit=8)` + per-tool `ToolCallLimitMiddleware` active on `strategist_agent`
+- Tool output always includes `SCOPE:`, `TOOLS_CALLED:`, `FILINGS:`, `PRICE_HISTORY:`, `NEWS:`, `GRAPH_CONNECTIONS:`, `GAPS:`, `ERRORS:` sections (even when empty)
+- `ModelCallLimitMiddleware(run_limit=12)` + per-tool `ToolCallLimitMiddleware(run_limit=2)` active on `retriever_agent` (was: `strategist_agent`, run_limit=8)
 - `_RAG_COUNTER` raises or returns a sentinel on the 4th RAG call within a single request
 - `tools_called` non-empty in 3 of 4 eval questions
 - Groundedness avg > 1.0
