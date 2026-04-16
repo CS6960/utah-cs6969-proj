@@ -22,7 +22,7 @@ _RAG_COUNTER: ContextVar[int] = ContextVar("rag_counter", default=0)
 
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("API_KEY")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("BASE_URL")
-LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
 
 model = ChatOpenAI(
     model=LLM_MODEL_NAME,

@@ -131,10 +131,10 @@ def build_portfolio_context() -> str:
 
 def serialize_for_llm(evidence: EvidenceResponse) -> str:
     """
-    Render EvidenceResponse as markdown-with-key-value-lines. Llama 3.1 70B
-    struggles with nested JSON — this format is more reliable. GAPS and
-    ERRORS sections are ALWAYS rendered even when empty, so the Strategist
-    prompt can train on their fixed positions.
+    Render EvidenceResponse as markdown-with-key-value-lines. Markdown is more
+    reliable than nested JSON for the instruction-tuned models we use in this
+    project. GAPS and ERRORS sections are ALWAYS rendered even when empty, so
+    the Strategist prompt can train on their fixed positions.
     """
     lines = [f"SCOPE: {evidence.scope_request}"]
     lines.append(f"TOOLS_CALLED: {', '.join(evidence.tools_called) if evidence.tools_called else '(none)'}")

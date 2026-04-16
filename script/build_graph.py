@@ -36,7 +36,7 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("API_KEY")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL") or os.environ.get("BASE_URL")
-LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME") or os.environ.get("MODEL_NAME", "meta/llama-3.1-70b-instruct")
+LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME") or os.environ.get("MODEL_NAME", "qwen/qwen3.5-122b-a10b")
 
 PORTFOLIO_TICKERS = ["AAPL", "MSFT", "JPM", "NVDA", "AMZN", "GOOGL", "LLY", "XOM"]
 
