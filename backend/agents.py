@@ -1,21 +1,17 @@
 import logging
 import os
+import re
 from contextvars import ContextVar
 from typing import Any
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
 import _env_bootstrap  # noqa: F401  -- loads backend/.env before env vars are read below
 from agent_tools.strategist_tools import STRATEGIST_TOOLS, build_portfolio_context
-from agent_tools.tools import (
-    BASE_ADVISOR_TOOLS,
-    REPORT_RETRIEVAL_TOOLS,
-    RETRIEVER_TOOLS,
-)
+from agent_tools.tools import REPORT_RETRIEVAL_TOOLS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -95,185 +91,11 @@ financial_reports_retrieval_agent = create_agent(
     ),
 )
 
+RETRIEVER_AGENT_PROMPT = """You are Meridian's Retriever agent. Your only job is to gather evidence with the four tools provided.
+You DO NOT produce analysis, recommendations, or investment advice. Your final message may be a brief
+sentence noting you have completed retrieval; downstream agents will synthesize the evidence.
 
-@tool
-def call_financial_reports_retrieval_agent(query: str) -> str:
-    """
-    Delegate SEC filing and financial report retrieval to the dedicated
-    financial_reports_retrieval_agent and return its evidence summary.
-    """
-    _trace(
-        "tool_called",
-        tool="call_financial_reports_retrieval_agent",
-        query_preview=_preview(query),
-    )
-    _append_tools_called("call_financial_reports_retrieval_agent")
-    result = financial_reports_retrieval_agent.invoke({"messages": [HumanMessage(content=query)]})
-    response = result["messages"][-1].content
-    nested_tool_calls = extract_tool_call_details(result["messages"])
-    nested_tools_called = [tool_call["name"] for tool_call in nested_tool_calls]
-    for tool_call in nested_tool_calls:
-        _append_tools_called(tool_call["name"])
-        _trace(
-            "agent_tool_selection",
-            role="financial_reports_retrieval_agent",
-            tool=tool_call["name"],
-            args=tool_call["args"],
-            args_preview=tool_call["args_preview"],
-            delegated_by="call_financial_reports_retrieval_agent",
-        )
-    _trace(
-        "subagent_completed",
-        role="financial_reports_retrieval_agent",
-        tools_called=nested_tools_called,
-        response_preview=_preview(response),
-    )
-    return response
-
-
-@tool
-def call_skeptic_response(query: str, current_analysis: str) -> str:
-    """
-    Generate a skeptical review that highlights risks, missing evidence,
-    and weak assumptions in the current analysis.
-    """
-    _trace(
-        "tool_called",
-        tool="call_skeptic_response",
-        query_preview=_preview(query),
-        analysis_preview=_preview(current_analysis),
-    )
-    _append_tools_called("call_skeptic_response")
-    prompt = (
-        f"USER QUESTION:\n{query}\n\n"
-        f"CURRENT ANALYSIS:\n{current_analysis}\n\n"
-        "Provide a skeptical review focused on downside risk, unsupported claims, "
-        "missing evidence, and alternative explanations."
-    )
-    result = model.invoke(
-        [
-            SystemMessage(
-                content=(
-                    "You are a skeptical financial reviewer. "
-                    "Challenge the current analysis, surface missing evidence, identify downside risks, "
-                    "and point out overconfidence or unsupported claims. "
-                    "Be concise, specific, and evidence-oriented."
-                )
-            ),
-            HumanMessage(content=prompt),
-        ]
-    )
-    _trace("llm_completed", role="skeptic", response_preview=_preview(result.content))
-    return result.content
-
-
-@tool
-def call_visionary_response(query: str, current_analysis: str, skeptic_response: str) -> str:
-    """
-    Generate a visionary review after considering the current analysis
-    and the skeptic's critique.
-    """
-    _trace(
-        "tool_called",
-        tool="call_visionary_response",
-        query_preview=_preview(query),
-        analysis_preview=_preview(current_analysis),
-        skeptic_preview=_preview(skeptic_response),
-    )
-    _append_tools_called("call_visionary_response")
-    prompt = (
-        f"USER QUESTION:\n{query}\n\n"
-        f"CURRENT ANALYSIS:\n{current_analysis}\n\n"
-        f"SKEPTIC RESPONSE:\n{skeptic_response}\n\n"
-        "Provide a visionary response that adds upside scenarios, strategic opportunities, "
-        "and longer-term perspectives while staying grounded in the evidence."
-    )
-    result = model.invoke(
-        [
-            SystemMessage(
-                content=(
-                    "You are a visionary financial reviewer. "
-                    "Expand the analysis with upside scenarios, longer-term optionality, strategic opportunities, "
-                    "and second-order effects that a cautious analyst might miss. "
-                    "Be concise, concrete, and grounded in the provided context."
-                )
-            ),
-            HumanMessage(content=prompt),
-        ]
-    )
-    _trace("llm_completed", role="visionary", response_preview=_preview(result.content))
-    return result.content
-
-
-financial_advisor_agent = create_agent(
-    model,
-    tools=[
-        *BASE_ADVISOR_TOOLS,
-        call_financial_reports_retrieval_agent,
-        call_skeptic_response,
-        call_visionary_response,
-    ],
-    system_prompt=(
-        "You are a financial advisor assistant for a portfolio analysis application. "
-        "All dates and times in your reports must use Denver time (America/Denver, Mountain Time). "
-        "You help the user understand their portfolio, holdings, concentration, performance, "
-        "risk, and stock-specific context. "
-        "You have access to the user's portfolio, including the latest retrieved real-time market data. "
-        "Use the portfolio tools whenever the user asks about their holdings, allocation, performance, "
-        "concentration, or stock-specific questions. "
-        "For any question about SEC filings, 10-K, 10-Q, risk factors, management discussion, "
-        "financial statements, or report-specific claims, you must call "
-        "`call_financial_reports_retrieval_agent` and use its evidence before answering. "
-        "Before finalizing any summary or recommendation, you must first draft your working analysis, "
-        "then call `call_skeptic_response`, then call `call_visionary_response`, and only then produce "
-        "the final answer. "
-        "The required order is: working analysis -> retrieval -> skeptic -> visionary -> final answer. "
-        "Your final answer should integrate both the skeptical and visionary perspectives into one coherent summary. "        "Do not answer report-content questions from memory. "
-        "Ground your answers in the available portfolio data and current market data when possible. "
-        "Be clear, analytical, concise, and practical. "
-        "Do not make up holdings, prices, or portfolio facts. "
-        "If the available data is insufficient, say so plainly."
-    ),
-)
-
-RETRIEVER_SYSTEM_PROMPT = (
-    "You are a financial research retriever. Your job is to gather evidence, NOT to give advice.\n"
-    "All dates and times must use Denver time (America/Denver, Mountain Time).\n\n"
-    "Given the user's question, systematically gather relevant data:\n"
-    "1. ALWAYS call get_portfolio_holdings first to see what the user owns.\n"
-    "2. For questions about recent moves, weekly changes, or trend direction, call "
-    "get_stock_price_history for each relevant holding so you can cite specific day-over-day closes. "
-    "Use get_stock_price only when you need the single most recent snapshot.\n"
-    "3. Use list_available_financial_reports to find SEC filings.\n"
-    "4. Use retrieve_embedded_financial_report_info for relevant excerpts.\n\n"
-    "Summarize findings in structured format:\n"
-    "- PORTFOLIO: [holdings summary]\n"
-    "- PRICE HISTORY: [per-ticker daily closes with weekly % change]\n"
-    "- FILING EXCERPTS: [list passages with source]\n"
-    "- KEY FACTS: [most important facts uncovered]\n\n"
-    "Do NOT give investment advice. Only report what the data says."
-)
-
-STRATEGIST_SYSTEM_PROMPT = (
-    "You are a financial strategist. You receive a user question and an evidence package "
-    "gathered by a research agent.\n\n"
-    "Synthesize the evidence into clear, actionable analysis:\n"
-    "1. Cross-reference sources for consistency.\n"
-    "2. Identify second-order effects across sectors.\n"
-    "3. Cite specific evidence for each claim.\n"
-    "4. Provide directional recommendations (add/hold/trim/avoid) with confidence.\n"
-    "5. Be explicit about what evidence supports vs. what is uncertain."
-)
-
-retriever_agent = create_agent(
-    model,
-    tools=RETRIEVER_TOOLS,
-    system_prompt=RETRIEVER_SYSTEM_PROMPT,
-)
-
-STRATEGIST_AGENT_PROMPT = """You are Meridian, a financial strategist agent for an 8-holding equity portfolio. You have been pre-loaded with the user's current portfolio holdings and cash position in the message above. You orchestrate evidence retrieval through three tools and synthesize the result into an actionable analysis.
-
-TIMEZONE: All dates and times in your reports must use Denver time (America/Denver, Mountain Time). When referencing "today", "this week", or any temporal label, anchor it to the current date/time in Denver.
+TIMEZONE: America/Denver.
 
 WORKFLOW (you MUST follow this order):
 
@@ -285,17 +107,15 @@ WORKFLOW (you MUST follow this order):
 3. Call `request_news(scope, tickers)` FIRST with ALL portfolio tickers to capture the macro environment. Use a broad scope like "market risks geopolitical events sector catalysts". The results include BOTH relevant and noise articles. You MUST evaluate each article's relevance — do NOT cite articles about sports, agriculture, space, or non-portfolio tickers. Noise citations reduce eval quality.
 4. Call `request_prices(tickers, start_date, end_date)` for all portfolio tickers.
 5. Call `request_filings(scope, tickers)` with a scope informed by what the news revealed (e.g., if news mentions geopolitical risk, scope filings to "geopolitical exposure supply chain risk").
-6. If news revealed macro themes with cross-sector implications (geopolitical events, commodity shocks, policy changes), call `request_graph(scope, entities, hops)` to find causal connections. Use entity names from the news (e.g., "Iran conflict", "oil price surge", "AAPL", "XOM"). This surfaces pre-extracted causal chains like "Iran conflict --[threatens]--> tech sector".
-7. Inspect EVERY tool return for GAPS and ERRORS sections. You MUST acknowledge both in your final response — do not synthesize claims about items in GAPS or ERRORS.
+6. If news revealed macro themes with cross-sector implications (geopolitical events, commodity shocks, policy changes), call `request_graph(scope, entities, hops)` to find causal connections. Use entity names from the news (e.g., "Iran conflict", "oil price surge", "AAPL", "XOM"). This surfaces pre-extracted causal chains like "Iran conflict --[threatens]--> AAPL". hops=1 for direct connections, hops=2 for extended traversal.
+7. Inspect EVERY tool return for GAPS and ERRORS sections. Note them in your reasoning.
 8. If evidence is incomplete and you have remaining budget, call a tool one more time with refined scope. Each tool may be called at most twice.
 
-SYNTHESIS — Cross-Sector Causal Reasoning (CRITICAL):
-When news reveals a macro event (geopolitical crisis, commodity shock, regulatory shift), you MUST:
-- Name the dominant macro theme and trace its causal chain through the portfolio. Example: "Iran conflict → Strait of Hormuz closure → oil price surge → XOM benefits as energy producer, while tech holdings face demand destruction from inflation fears."
-- Connect each holding's price movement to a specific news catalyst — not generic sector labels. If XOM is up, explain WHY from the news (oil surge from conflict), not just "market-driven."
-- Identify inverse dynamics within the portfolio: the same event can help one holding (XOM from oil) while hurting another (tech from risk-off sentiment).
-- Show how non-tech holdings (JPM, LLY, XOM) relate to the macro event differently: flight-to-quality flows, defensive demand, commodity exposure.
-- Do NOT treat tickers in isolation. The analysis must show how a single event ripples through multiple holdings differently.
+NOISE HANDLING: when a news article is unrelated to the portfolio (non-portfolio tickers only, sports,
+agriculture, space), note it in your tool-call reasoning but still let the tool return its full output —
+the downstream Strategist and Critic will evaluate article relevance.
+
+PORTFOLIO is the exact set: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM.
 
 TOOL DESCRIPTIONS:
 
@@ -309,19 +129,17 @@ TOOL DESCRIPTIONS:
     Retrieve SEC 10-K filing excerpts for the given tickers. The `scope` argument is a natural-language description used as the embedding query (e.g., "risk factors", "geopolitical exposure"). Returns FILINGS, GAPS, and ERRORS sections.
 
 - request_graph(scope: str, entities: list[str], hops: int = 1)
-    Traverse the entity-relationship graph to find causal connections between companies, sectors, commodities, and macro events. Returns GRAPH_CONNECTIONS edges showing relationships (e.g., "Iran conflict --[threatens]--> AAPL"), plus GAPS and ERRORS. Use after reading news to map cross-sector causal chains. hops=1 for direct connections, hops=2 for extended traversal.
+    Traverse the entity-relationship graph to find causal connections between companies, sectors, commodities, and macro events. Returns GRAPH_CONNECTIONS edges showing relationships (e.g., "Iran conflict --[threatens]--> AAPL"), plus GAPS and ERRORS. Use after reading news to map cross-sector causal chains.
 
 CONSTRAINTS:
-- Do not invent stock prices, percentages, or filing claims. If the evidence does not contain them, say so plainly.
-- Do not cite tickers that are not in the portfolio. The portfolio is exactly: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. Mentioning TSLA, PFE, META, NFLX, etc. is a noise citation and reduces eval quality.
-- Keep the final response under 1500 words. Be analytical, concrete, and actionable.
-- When evaluating holding strength ("which holdings look strongest"), weigh both short-term price action AND overall position P&L (current price vs average cost basis from portfolio context). Do not rely solely on 1-week performance.
-- When recommending cash deployment ("where should new cash go"), consider whether new positions outside the current portfolio would better address identified risks. If recommending only existing holdings, explain why staying in-portfolio is preferred over diversifying into new names."""
+- Do not invent stock prices, percentages, or filing claims.
+- Do not cite tickers that are not in the portfolio.
+- Do NOT produce analysis, synthesis, or recommendations. The evidence you gather through tool calls is the sole product of this step."""
 
-strategist_agent = create_agent(
+retriever_agent = create_agent(
     model,
     tools=STRATEGIST_TOOLS,
-    system_prompt=STRATEGIST_AGENT_PROMPT,
+    system_prompt=RETRIEVER_AGENT_PROMPT,
     middleware=[
         ModelCallLimitMiddleware(run_limit=12, exit_behavior="end"),
         ToolCallLimitMiddleware(tool_name="request_filings", run_limit=2, exit_behavior="continue"),
@@ -332,7 +150,7 @@ strategist_agent = create_agent(
 )
 
 AGENTS = {
-    "financial_advisor": strategist_agent,
+    "financial_advisor": retriever_agent,
     "financial_reports_retrieval_agent": financial_reports_retrieval_agent,
 }
 
@@ -364,7 +182,7 @@ def extract_tool_call_details(messages: list) -> list[dict[str, Any]]:
 
 def run_agent(query: str, role: str = "financial_advisor"):
     token = _start_trace(role, query)
-    agent = AGENTS.get(role, financial_advisor_agent)
+    agent = AGENTS.get(role, retriever_agent)
     try:
         result = agent.invoke({"messages": [HumanMessage(content=query)]})
         tool_calls = extract_tool_call_details(result["messages"])
@@ -402,41 +220,309 @@ def run_agent(query: str, role: str = "financial_advisor"):
         raise
 
 
-def run_strategist_agent(query: str) -> tuple[str, list[str], list[dict[str, Any]]]:
+def _assemble_evidence_package(messages: list) -> str:
+    """Build a deterministic evidence package from Retriever messages via tool_call_id joins."""
+    id_to_name: dict[str, str] = {}
+    id_to_args: dict[str, Any] = {}
+    for msg in messages:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                id_to_name[tc["id"]] = tc["name"]
+                id_to_args[tc["id"]] = tc.get("args", {})
+
+    tool_message_sections: list[str] = []
+    counter = 0
+    counts: dict[str, int] = {"news": 0, "prices": 0, "filings": 0, "graph": 0, "other": 0}
+    errors = 0
+
+    tool_key_map = {
+        "request_news": "news",
+        "request_prices": "prices",
+        "request_filings": "filings",
+        "request_graph": "graph",
+    }
+
+    for msg in messages:
+        if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+            tc_id = msg.tool_call_id
+            tool_name = id_to_name.get(tc_id, "unknown_tool")
+            args = id_to_args.get(tc_id, {})
+            counter += 1
+            bucket = tool_key_map.get(tool_name, "other")
+            counts[bucket] = counts.get(bucket, 0) + 1
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if "ERRORS" in content and "none" not in content.lower():
+                errors += 1
+            args_preview = _preview(args)
+            section = f"## Tool call {counter} — {tool_name}({args_preview})\n{content}"
+            tool_message_sections.append(section)
+
+    if not tool_message_sections:
+        return ""
+
+    header = (
+        f"## Evidence coverage: {counter} tool calls "
+        f"(news={counts['news']}, prices={counts['prices']}, "
+        f"filings={counts['filings']}, graph={counts['graph']}), "
+        f"{errors} errors"
+    )
+    return header + "\n\n" + "\n\n".join(tool_message_sections)
+
+
+def _parse_critic_challenges(dissent_text: str) -> int:
+    """Count enumerated CHALLENGES entries; returns 0 if none or only the placeholder."""
+    section_pat = re.compile(
+        r"^\s*#{0,3}\s*\**\s*CHALLENGES\s*\**\s*:?\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    m = section_pat.search(dissent_text)
+    if not m:
+        return 0
+
+    after_header = dissent_text[m.end() :]
+    next_section = re.search(
+        r"^\s*#{0,3}\s*\**\s*(MISSING_EVIDENCE|ALTERNATIVE_HYPOTHESES)\s*\**\s*:?\s*$",
+        after_header,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    challenges_block = after_header[: next_section.start()] if next_section else after_header
+
+    entry_pat = re.compile(r"^\s*\d+\.\s+(.+)", re.MULTILINE)
+    entries = entry_pat.findall(challenges_block)
+    if not entries:
+        return 0
+    if len(entries) == 1 and re.search(r"no material challenges identified", entries[0], re.IGNORECASE):
+        return 0
+    return len(entries)
+
+
+def run_critic_agent(query: str) -> tuple[str, str, str, list[str], list[dict]]:
+    """Phase 4 Retriever -> Strategist-draft -> Critic -> Strategist-revision pipeline.
+    Returns (result_with_dissent, dissent, draft, tools_called, execution_trace).
     """
-    Run the Strategist agent for a user query. Returns
-    (response_text, tools_called, execution_trace) — same shape as run_agent
-    so /api/agent's tuple unpacking remains valid.
-    """
-    token = _start_trace("strategist", query)
+    token = _start_trace("phase4_pipeline", query)
+
+    portfolio_context = build_portfolio_context()
+
+    _trace("agent_run_started", role="retriever")
     try:
-        portfolio_context = build_portfolio_context()
-        human_content = f"PORTFOLIO CONTEXT:\n{portfolio_context}\n\nUSER QUESTION: {query}"
-        result = strategist_agent.invoke({"messages": [HumanMessage(content=human_content)]})
-
-        tool_call_details = extract_tool_call_details(result["messages"])
-        for tool_call in tool_call_details:
-            _trace(
-                "agent_tool_selection",
-                role="strategist",
-                tool=tool_call["name"],
-                args=tool_call["args"],
-                args_preview=tool_call["args_preview"],
-            )
-
-        response = result["messages"][-1].content
-        trace, aggregated_tools_called = _end_trace(token)
-        trace.append(
-            {
-                "type": "agent_run_completed",
-                "role": "strategist",
-                "tools_called": aggregated_tools_called,
-                "response_preview": _preview(response),
-            }
+        retriever_result = retriever_agent.invoke(
+            {"messages": [HumanMessage(content=f"PORTFOLIO CONTEXT:\n{portfolio_context}\n\nUSER QUESTION: {query}")]}
         )
-        logger.info("agent_trace %s", trace[-1])
-        return response, aggregated_tools_called, trace
     except Exception as exc:
-        _trace("agent_run_failed", role="strategist", error=repr(exc))
+        _trace("agent_run_failed", role="retriever", error=repr(exc))
         _end_trace(token)
         raise
+
+    retriever_messages = retriever_result["messages"]
+    tool_call_details = extract_tool_call_details(retriever_messages)
+    for tool_call in tool_call_details:
+        _append_tools_called(tool_call["name"])
+        _trace(
+            "agent_tool_selection",
+            role="retriever",
+            tool=tool_call["name"],
+            args=tool_call["args"],
+            args_preview=tool_call["args_preview"],
+        )
+
+    retriever_response = retriever_messages[-1].content
+    _trace(
+        "agent_run_completed",
+        role="retriever",
+        tools_called=list(_TOOLS_CALLED.get() or []),
+        response_preview=_preview(retriever_response),
+    )
+
+    evidence_package = _assemble_evidence_package(retriever_messages)
+
+    if not evidence_package:
+        _trace("pipeline_short_circuit", reason="retriever produced no tool-call evidence")
+        trace, tools_called = _end_trace(token)
+        return (
+            "(Retriever produced no evidence for this query; pipeline short-circuited — see execution_trace)",
+            "(n/a)",
+            "",
+            tools_called,
+            trace,
+        )
+
+    # Evidence identity sentinel: both downstream calls see the same object
+    evidence_for_draft = evidence_package
+    evidence_for_critic = evidence_package
+    assert id(evidence_for_draft) == id(evidence_for_critic)
+
+    _trace("llm_started", role="strategist_draft")
+    try:
+        draft_response = model.invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "You are Meridian's Strategist. You receive the user's portfolio context, a question, "
+                        "and an evidence package gathered by the Retriever. Synthesize the evidence into a "
+                        "specific, actionable recommendation.\n\n"
+                        "TIMEZONE: America/Denver.\n\n"
+                        "REQUIREMENTS:\n"
+                        "- Cite specific evidence from the package (ticker, date, price, filing excerpt, graph edge). "
+                        "Do NOT cite facts outside the evidence.\n"
+                        "- Trace cross-sector causal chains when the evidence supports them (e.g., Iran conflict "
+                        "-> Hormuz closure -> oil surge -> XOM benefits, tech sells off).\n"
+                        "- Give directional recommendations (add / hold / trim / avoid) with confidence.\n"
+                        "- Portfolio universe: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. Do not cite "
+                        "non-portfolio tickers.\n"
+                        "- When citing quantitative facts from filings or news, prefer verbatim quoted phrases "
+                        "over paraphrase.\n"
+                        "- When the evidence package presents filing text in a bracketed excerpt block, reproduce "
+                        "load-bearing factual phrases verbatim with surrounding quotation marks. Do not rephrase "
+                        "filing excerpts when citing them.\n"
+                        "- Acknowledge GAPS and ERRORS from the evidence package; never synthesize over them.\n"
+                        "- Under 1500 words."
+                    )
+                ),
+                HumanMessage(
+                    content=(
+                        f"PORTFOLIO CONTEXT:\n{portfolio_context}\n\n"
+                        f"USER QUESTION: {query}\n\n"
+                        f"EVIDENCE PACKAGE:\n{evidence_for_draft}"
+                    )
+                ),
+            ]
+        )
+        draft_v1 = draft_response.content
+    except Exception as exc:
+        exc_type = type(exc).__name__
+        logger.warning("strategist_draft failed: %s", exc_type)
+        trace, tools_called = _end_trace(token)
+        return evidence_for_draft, f"(strategist_draft unavailable: {exc_type})", "", tools_called, trace
+
+    _trace("llm_completed", role="strategist_draft", response_preview=_preview(draft_v1))
+
+    _trace("llm_started", role="critic", temperature=0.85)
+    try:
+        critic_response = model.bind(temperature=0.85).invoke(
+            [
+                SystemMessage(
+                    content=(
+                        "You are Meridian's Critic. You receive the same portfolio context, user question, "
+                        "and evidence package the Strategist saw, plus the Strategist's draft recommendation. "
+                        "Your job is adversarial: re-derive conclusions independently from the evidence, then "
+                        "flag where the draft's claims do not match what the evidence actually supports.\n\n"
+                        "You are NOT trying to be balanced. You are trying to surface weaknesses.\n\n"
+                        "METHOD:\n"
+                        "(1) Read the EVIDENCE PACKAGE first and form your own reading of what it supports, "
+                        "independent of the draft.\n"
+                        "(2) Then compare the DRAFT RECOMMENDATION against your reading — not against its internal "
+                        "self-consistency. Flag only gaps between the draft and the evidence; do not flag stylistic "
+                        "issues.\n\n"
+                        "TIMEZONE: America/Denver.\n\n"
+                        "PRODUCE EXACTLY THREE SECTIONS, each with enumerated items:\n\n"
+                        "CHALLENGES:\n"
+                        "1. <specific claim in the draft>. Evidence says: <what the evidence package actually shows>. "
+                        "Therefore the draft is <unsupported | misquoted | overstated | understated | cherry-picked>.\n"
+                        "2. ...\n"
+                        '(If no challenges are warranted, write "1. (no material challenges identified)".)\n\n'
+                        "MISSING_EVIDENCE:\n"
+                        "1. <thing the draft asserts or implies that is not in the evidence package>\n"
+                        "2. ...\n"
+                        '(If none, "1. (none)".)\n\n'
+                        "ALTERNATIVE_HYPOTHESES:\n"
+                        "1. <a different reading of the same evidence that leads to a different conclusion>\n"
+                        "2. ...\n"
+                        '(If none, "1. (none)".)\n\n'
+                        "RULES:\n"
+                        "- Every CHALLENGE must cite a specific verifiable fact from the evidence package (price, "
+                        "date, filing excerpt, news headline, graph edge).\n"
+                        "- Do NOT fabricate evidence. If the evidence is insufficient, that itself is an entry in "
+                        "MISSING_EVIDENCE.\n"
+                        "- Portfolio universe: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM.\n"
+                        "- Under 800 words total."
+                    )
+                ),
+                HumanMessage(
+                    content=(
+                        f"PORTFOLIO CONTEXT:\n{portfolio_context}\n\n"
+                        f"USER QUESTION: {query}\n\n"
+                        f"EVIDENCE PACKAGE:\n{evidence_for_critic}\n\n"
+                        f"DRAFT RECOMMENDATION:\n{draft_v1}"
+                    )
+                ),
+            ]
+        )
+        dissent = critic_response.content
+    except Exception as exc:
+        exc_type = type(exc).__name__
+        logger.warning("critic failed: %s", exc_type)
+        trace, tools_called = _end_trace(token)
+        return draft_v1, f"(critic unavailable: {exc_type})", draft_v1, tools_called, trace
+
+    if not dissent or not dissent.strip():
+        dissent = "(no material challenges identified)"
+
+    challenge_count = _parse_critic_challenges(dissent)
+    _trace(
+        "llm_completed",
+        role="critic",
+        challenge_count=challenge_count,
+        response_preview=_preview(dissent),
+    )
+
+    if challenge_count == 0:
+        _trace("llm_skipped", role="strategist_revision", reason="no challenges")
+        v2 = draft_v1
+    else:
+        _trace("llm_started", role="strategist_revision")
+        try:
+            revision_response = model.invoke(
+                [
+                    SystemMessage(
+                        content=(
+                            "You are Meridian's Strategist. You previously produced a draft recommendation. "
+                            "A Critic has now challenged it. Revise the draft so it addresses each valid challenge "
+                            "and incorporates missing evidence where warranted.\n\n"
+                            "For each enumerated CHALLENGE, ACKNOWLEDGE one of:\n"
+                            '- "ACCEPTED (challenge #N): revised — <what changed in the recommendation>"\n'
+                            '- "REJECTED (challenge #N): <one-sentence reason, citing evidence>"\n\n'
+                            "Place these acknowledgments at the end of the revised recommendation under a "
+                            '"### Revision notes" header.\n\n'
+                            "Otherwise the recommendation body should be the revised version that integrates "
+                            "accepted challenges directly into the prose (not footnoted). Preserve the "
+                            "under-1500-word ceiling.\n\n"
+                            "Do not weaken legitimate conclusions just because the Critic challenged them — if "
+                            "the evidence supports the original claim, reject the challenge with a reason.\n\n"
+                            "For each MISSING_EVIDENCE entry, either (a) add an acknowledgment in the body that "
+                            "the relevant claim is not supported by evidence, or (b) tag it in Revision notes as "
+                            '"DEFERRED (missing #N): <reason>". ALTERNATIVE_HYPOTHESES may be addressed in '
+                            "prose or explicitly set aside in Revision notes.\n\n"
+                            "When the evidence package presents filing text in a bracketed excerpt block, reproduce "
+                            "load-bearing factual phrases verbatim with surrounding quotation marks. Do not rephrase "
+                            "filing excerpts when citing them.\n\n"
+                            "Portfolio universe: AAPL, MSFT, JPM, NVDA, AMZN, GOOGL, LLY, XOM. TIMEZONE: America/Denver."
+                        )
+                    ),
+                    HumanMessage(
+                        content=(
+                            f"PORTFOLIO CONTEXT:\n{portfolio_context}\n\n"
+                            f"USER QUESTION: {query}\n\n"
+                            f"EVIDENCE PACKAGE:\n{evidence_package}\n\n"
+                            f"DRAFT RECOMMENDATION:\n{draft_v1}\n\n"
+                            f"CRITIC CHALLENGES:\n{dissent}"
+                        )
+                    ),
+                ]
+            )
+            v2 = revision_response.content
+            _trace("llm_completed", role="strategist_revision", response_preview=_preview(v2))
+        except Exception as exc:
+            exc_type = type(exc).__name__
+            logger.warning("strategist_revision failed: %s", exc_type)
+            _trace("revision_failed", error=exc_type)
+            v2 = draft_v1
+
+    result = v2 + "\n\n---\n### Dissenting perspective\n" + dissent
+
+    if len(result) < 500:
+        logger.warning("result_length_warning: result shorter than 500 chars (len=%d)", len(result))
+        _trace("result_length_warning", length=len(result))
+
+    trace, tools_called = _end_trace(token)
+    return result, dissent, draft_v1, tools_called, trace
