@@ -1,5 +1,9 @@
 import asyncio
+import contextlib
 import json
+import logging
+import secrets
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -129,6 +133,50 @@ STREAM_HEADERS = {
 }
 
 
+_STREAM_POLL_SECONDS = 1  # sub-heartbeat poll interval for prompt stage delivery
+
+
+class _StageHandler(logging.Handler):
+    """Logging handler that captures agent_trace records for a specific request.
+
+    Attached to logging.getLogger("agents") for the duration of one streaming
+    request and removed in the finally block. Thread-safe: uses a nonce stored
+    on threading.current_thread() to filter records to this request only, which
+    is bulletproof against thread-pool reuse.
+    """
+
+    def __init__(self, nonce: str, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> None:
+        super().__init__()
+        self._nonce = nonce
+        self._loop = loop
+        self._queue = queue
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            # Filter to this request's executor thread.
+            thread_nonce = getattr(threading.current_thread(), "_meridian_request_nonce", None)
+            if thread_nonce != self._nonce:
+                return
+            # Only handle the structured agent_trace sentinel.
+            # logging stores a single dict arg as record.args == the dict
+            # itself (not a tuple), so we check for that case explicitly.
+            if record.msg != "agent_trace %s" or not record.args:
+                return
+            if isinstance(record.args, dict):
+                trace = record.args
+            elif isinstance(record.args, (tuple, list)) and isinstance(record.args[0], dict):
+                trace = record.args[0]
+            else:
+                return
+            with contextlib.suppress(RuntimeError):
+                # RuntimeError: event loop closed (orphaned thread after
+                # response finished).
+                self._loop.call_soon_threadsafe(self._queue.put_nowait, trace)
+        except Exception:  # noqa: S110
+            # Logging handlers must never raise.
+            pass
+
+
 async def _run_agent_stream(
     request: Request,
     executor_fn: Callable[[], tuple],
@@ -136,21 +184,56 @@ async def _run_agent_stream(
 ):
     """NDJSON streaming generator.
 
-    Runs ``executor_fn`` in the default thread executor. Emits heartbeats
-    every AGENT_STREAM_HEARTBEAT_SECONDS. When the executor future resolves,
-    emits a ``{"event":"result", <field>: <value>, ...}`` line. On error or
-    total-cap timeout, emits ``{"event":"error","detail":...}`` and closes.
+    Runs ``executor_fn`` in the default thread executor. Emits stage events
+    from the agent pipeline (~1s latency), heartbeats every
+    AGENT_STREAM_HEARTBEAT_SECONDS when no stage event has fired. When the
+    executor future resolves, emits a ``{"event":"result", <field>: <value>,
+    ...}`` line. On error or total-cap timeout, emits
+    ``{"event":"error","detail":...}`` and closes.
     """
     loop = asyncio.get_running_loop()
-    fut = loop.run_in_executor(None, executor_fn)
+    stage_queue: asyncio.Queue = asyncio.Queue()
+
+    # Per-request nonce for thread isolation in the shared default thread pool.
+    request_nonce = secrets.token_hex(8)
+
+    def sync_wrapper():
+        current = threading.current_thread()
+        current._meridian_request_nonce = request_nonce
+        try:
+            return executor_fn()
+        finally:
+            with contextlib.suppress(AttributeError):
+                delattr(current, "_meridian_request_nonce")
+
+    agents_logger = logging.getLogger("agents")
+    handler = _StageHandler(request_nonce, loop, stage_queue)
+    agents_logger.addHandler(handler)
+
+    fut = loop.run_in_executor(None, sync_wrapper)
     started = loop.time()
+    last_emit_at = loop.time()
 
     try:
         while True:
-            # Non-cancelling poll: wait() does NOT cancel the future on timeout,
-            # unlike asyncio.wait_for(). Executor futures can't be cancelled
-            # once the thread is running, so we just observe completion.
-            done, _ = await asyncio.wait({fut}, timeout=AGENT_STREAM_HEARTBEAT_SECONDS)
+            # Non-cancelling poll at 1s so stage events surface promptly.
+            # wait() does NOT cancel the future on timeout, unlike
+            # asyncio.wait_for(). Executor futures can't be cancelled once the
+            # thread is running, so we just observe completion.
+            done, _ = await asyncio.wait({fut}, timeout=_STREAM_POLL_SECONDS)
+
+            # Drain stage events from the queue (cap at 20/tick to avoid
+            # starving the future-done check).
+            drained = 0
+            while drained < 20:
+                try:
+                    trace = stage_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                elapsed = int(loop.time() - started)
+                yield json.dumps({"event": "stage", "elapsed_s": elapsed, **trace}) + "\n"
+                last_emit_at = loop.time()
+                drained += 1
 
             if fut in done:
                 try:
@@ -188,10 +271,15 @@ async def _run_agent_stream(
             if await request.is_disconnected():
                 return
 
-            yield json.dumps({"event": "heartbeat", "elapsed_s": elapsed}) + "\n"
+            # Heartbeat: only if no stage or heartbeat emitted recently.
+            if (loop.time() - last_emit_at) >= AGENT_STREAM_HEARTBEAT_SECONDS:
+                yield json.dumps({"event": "heartbeat", "elapsed_s": elapsed}) + "\n"
+                last_emit_at = loop.time()
     except asyncio.CancelledError:
         # Client dropped; let the coroutine unwind.
         raise
+    finally:
+        agents_logger.removeHandler(handler)
 
 
 @app.post("/api/agent")

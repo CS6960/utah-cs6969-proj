@@ -400,7 +400,7 @@ const AGENT_FETCH_TIMEOUT_MS = 250000; // slightly above backend cap (240s)
 const AGENT_RETRY_DELAY_MS = 5000;
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
-async function readNdjsonStream(response) {
+async function readNdjsonStream(response, { onStage } = {}) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -414,6 +414,10 @@ async function readNdjsonStream(response) {
       const lines = buffer.split("\n").map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
         const msg = JSON.parse(line);
+        if (msg.event === "stage") {
+          if (onStage) onStage(msg);
+          continue;
+        }
         if (msg.event === "heartbeat") continue;
         if (msg.event === "error") throw new Error(msg.detail || "pipeline error");
         if (msg.event === "result") {
@@ -428,6 +432,10 @@ async function readNdjsonStream(response) {
       buffer = buffer.slice(newlineIdx + 1);
       if (!line) continue;
       const msg = JSON.parse(line);
+      if (msg.event === "stage") {
+        if (onStage) onStage(msg);
+        continue;
+      }
       if (msg.event === "heartbeat") continue;
       if (msg.event === "error") {
         reader.cancel().catch(() => {});
@@ -441,7 +449,7 @@ async function readNdjsonStream(response) {
   }
 }
 
-async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
+async function fetchAgentReply(apiBase, query, { onWarming, onStage } = {}) {
   const endpoint = `${apiBase}/api/agent`;
   const init = {
     method: "POST",
@@ -466,7 +474,7 @@ async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
       // — let the caller's existing .ok / .json() handling fire.
       return response;
     }
-    const payload = await readNdjsonStream(response);
+    const payload = await readNdjsonStream(response, { onStage });
     return {
       ok: true,
       status: 200,
@@ -501,6 +509,26 @@ async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
   }
 }
 
+const STAGE_LABELS = {
+  "agent_run_started:retriever": "Gathering evidence",
+  "agent_run_completed:retriever": "Evidence gathered",
+  "llm_started:strategist_draft": "Drafting analysis",
+  "llm_completed:strategist_draft": "Draft complete",
+  "llm_started:critic": "Reviewing for risks",
+  "llm_completed:critic": "Review complete",
+  "llm_started:strategist_revision": "Revising with feedback",
+  "llm_completed:strategist_revision": "Revision complete",
+  "pipeline_short_circuit": "No evidence found",
+  "agent_run_started:financial_reports_retrieval_agent": "Looking up reports",
+  "agent_run_completed:financial_reports_retrieval_agent": "Report lookup complete",
+};
+
+function stageLabel(trace) {
+  if (!trace || !trace.type) return "Working";
+  const key = trace.role ? `${trace.type}:${trace.role}` : trace.type;
+  return STAGE_LABELS[key] ?? "Working";
+}
+
 function App() {
   const [holdings, setHoldings] = useState([]);
   const [cashBalances, setCashBalances] = useState([]);
@@ -511,6 +539,8 @@ function App() {
   const [portfolioDraft, setPortfolioDraft] = useState("");
   const [isHoldingChatLoading, setIsHoldingChatLoading] = useState(false);
   const [isPortfolioChatLoading, setIsPortfolioChatLoading] = useState(false);
+  const [holdingChatStatus, setHoldingChatStatus] = useState("");
+  const [portfolioChatStatus, setPortfolioChatStatus] = useState("");
   const [isPortfolioLoading, setIsPortfolioLoading] = useState(true);
   const [portfolioError, setPortfolioError] = useState("");
   const [chatError, setChatError] = useState("");
@@ -672,6 +702,7 @@ function App() {
 
     setChatError("");
     setIsHoldingChatLoading(true);
+    setHoldingChatStatus("");
     setDraft("");
 
     setMessagesBySymbol((current) => ({
@@ -683,8 +714,14 @@ function App() {
     }));
 
     try {
+      const onStage = (trace) => {
+        const label = stageLabel(trace);
+        const elapsed = typeof trace.elapsed_s === "number" ? ` (${trace.elapsed_s}s)` : "";
+        setHoldingChatStatus(`${label}${elapsed}`);
+      };
       const response = await fetchAgentReply(chatApiBase, prompt, {
         onWarming: () => setChatError("Backend is waking up, retrying in a few seconds..."),
+        onStage,
       });
 
       if (!response.ok) {
@@ -722,6 +759,7 @@ function App() {
       setChatError(reason);
     } finally {
       setIsHoldingChatLoading(false);
+      setHoldingChatStatus("");
     }
   }
 
@@ -734,13 +772,20 @@ function App() {
 
     setChatError("");
     setIsPortfolioChatLoading(true);
+    setPortfolioChatStatus("");
     setPortfolioDraft("");
 
     setPortfolioMessages((current) => [...current, { role: "user", text: prompt }]);
 
     try {
+      const onStage = (trace) => {
+        const label = stageLabel(trace);
+        const elapsed = typeof trace.elapsed_s === "number" ? ` (${trace.elapsed_s}s)` : "";
+        setPortfolioChatStatus(`${label}${elapsed}`);
+      };
       const response = await fetchAgentReply(chatApiBase, prompt, {
         onWarming: () => setChatError("Backend is waking up, retrying in a few seconds..."),
+        onStage,
       });
 
       if (!response.ok) {
@@ -772,6 +817,7 @@ function App() {
       setChatError(reason);
     } finally {
       setIsPortfolioChatLoading(false);
+      setPortfolioChatStatus("");
     }
   }
 
@@ -1547,7 +1593,7 @@ function App() {
               </div>
               {(isPortfolioChatLoading || chatError) && (
                 <div style={{ marginTop: 8, fontSize: 12, color: chatError ? "#b94b5e" : theme.muted }}>
-                  {chatError ? chatError : "Thinking..."}
+                  {chatError ? chatError : portfolioChatStatus || "Thinking..."}
                 </div>
               )}
             </div>
@@ -1715,7 +1761,7 @@ function App() {
               </div>
               {(isHoldingChatLoading || chatError) && (
                 <div style={{ marginTop: 8, fontSize: 12, color: chatError ? "#b94b5e" : theme.muted }}>
-                  {chatError ? chatError : "Thinking..."}
+                  {chatError ? chatError : holdingChatStatus || "Thinking..."}
                 </div>
               )}
             </div>
