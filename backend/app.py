@@ -1,9 +1,12 @@
 import asyncio
+import json
+from collections.abc import Callable
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -110,71 +113,115 @@ def latest_stock_price(symbol: str):
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 
-# Render's edge proxy closes upstream connections after ~100s with no response bytes,
-# returning an HTML 502 page that strips CORS headers (surfacing in the browser as a
-# "CORS policy" error). Cap the pipeline wall-clock below that threshold and surface
-# failures as JSON HTTPException so responses always pass through the CORS middleware.
-AGENT_PIPELINE_TIMEOUT_SECONDS = 85
+# Total wall-clock cap for streaming endpoints. Must be < any upstream hard limit.
+AGENT_STREAM_TOTAL_CAP_SECONDS = 240
+# Heartbeat interval. Must be << Render's ~100s proxy idle timeout so each
+# heartbeat line resets the edge timer.
+AGENT_STREAM_HEARTBEAT_SECONDS = 10
+
+STREAM_HEADERS = {
+    # Tell nginx-based proxies (Render/Cloudflare edge) NOT to buffer the
+    # response body — otherwise heartbeats are held until the stream closes
+    # and the whole point of heartbeats is defeated.
+    "X-Accel-Buffering": "no",
+    # Streams are never cacheable.
+    "Cache-Control": "no-cache, no-transform",
+}
+
+
+async def _run_agent_stream(
+    request: Request,
+    executor_fn: Callable[[], tuple],
+    result_fields: list[str],
+):
+    """NDJSON streaming generator.
+
+    Runs ``executor_fn`` in the default thread executor. Emits heartbeats
+    every AGENT_STREAM_HEARTBEAT_SECONDS. When the executor future resolves,
+    emits a ``{"event":"result", <field>: <value>, ...}`` line. On error or
+    total-cap timeout, emits ``{"event":"error","detail":...}`` and closes.
+    """
+    loop = asyncio.get_running_loop()
+    fut = loop.run_in_executor(None, executor_fn)
+    started = loop.time()
+
+    try:
+        while True:
+            # Non-cancelling poll: wait() does NOT cancel the future on timeout,
+            # unlike asyncio.wait_for(). Executor futures can't be cancelled
+            # once the thread is running, so we just observe completion.
+            done, _ = await asyncio.wait({fut}, timeout=AGENT_STREAM_HEARTBEAT_SECONDS)
+
+            if fut in done:
+                try:
+                    values = fut.result()
+                except Exception as error:
+                    yield json.dumps({"event": "error", "detail": str(error)}) + "\n"
+                    return
+                payload = {"event": "result"}
+                for name, value in zip(result_fields, values, strict=True):
+                    payload[name] = value
+                yield json.dumps(payload) + "\n"
+                return
+
+            elapsed = int(loop.time() - started)
+
+            if elapsed >= AGENT_STREAM_TOTAL_CAP_SECONDS:
+                yield (
+                    json.dumps(
+                        {
+                            "event": "error",
+                            "detail": (
+                                f"Pipeline exceeded {AGENT_STREAM_TOTAL_CAP_SECONDS}s "
+                                "total cap. Try a shorter question."
+                            ),
+                        }
+                    )
+                    + "\n"
+                )
+                return
+
+            # Critic-flagged mitigation: if the client disconnected we can
+            # stop streaming. The executor thread still runs to completion
+            # (unavoidable without cooperative cancellation in agent code),
+            # but the generator exits promptly.
+            if await request.is_disconnected():
+                return
+
+            yield json.dumps({"event": "heartbeat", "elapsed_s": elapsed}) + "\n"
+    except asyncio.CancelledError:
+        # Client dropped; let the coroutine unwind.
+        raise
 
 
 @app.post("/api/agent")
 async def agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
-    loop = asyncio.get_running_loop()
-    try:
-        result, dissent, draft, tools_called, execution_trace = await asyncio.wait_for(
-            loop.run_in_executor(None, run_critic_agent, query),
-            timeout=AGENT_PIPELINE_TIMEOUT_SECONDS,
-        )
-    except TimeoutError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Agent pipeline exceeded {AGENT_PIPELINE_TIMEOUT_SECONDS}s. "
-                "Try a shorter question or retry in a moment."
-            ),
-        ) from error
-    except Exception as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Agent pipeline unavailable: {error!s}",
-        ) from error
-    return {
-        "result": result,
-        "dissent": dissent,
-        "draft": draft,
-        "tools_called": tools_called,
-        "execution_trace": execution_trace,
-    }
+    return StreamingResponse(
+        _run_agent_stream(
+            request,
+            lambda: run_critic_agent(query),
+            ["result", "dissent", "draft", "tools_called", "execution_trace"],
+        ),
+        media_type="application/x-ndjson",
+        headers=STREAM_HEADERS,
+    )
 
 
 @app.post("/api/report-agent")
 async def report_agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
-    loop = asyncio.get_running_loop()
-    try:
-        result, tools_called, execution_trace = await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                lambda: run_agent(query, role="financial_reports_retrieval_agent"),
-            ),
-            timeout=AGENT_PIPELINE_TIMEOUT_SECONDS,
-        )
-    except TimeoutError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Report agent exceeded {AGENT_PIPELINE_TIMEOUT_SECONDS}s. Try a shorter question or retry in a moment."
-            ),
-        ) from error
-    except Exception as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Report agent unavailable: {error!s}",
-        ) from error
-    return {"result": result, "tools_called": tools_called, "execution_trace": execution_trace}
+    return StreamingResponse(
+        _run_agent_stream(
+            request,
+            lambda: run_agent(query, role="financial_reports_retrieval_agent"),
+            ["result", "tools_called", "execution_trace"],
+        ),
+        media_type="application/x-ndjson",
+        headers=STREAM_HEADERS,
+    )
 
 
 if __name__ == "__main__":

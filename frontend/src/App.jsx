@@ -396,9 +396,50 @@ function SuggestionChips({ prompts, onPick, label }) {
   );
 }
 
-const AGENT_FETCH_TIMEOUT_MS = 110000;
+const AGENT_FETCH_TIMEOUT_MS = 250000; // slightly above backend cap (240s)
 const AGENT_RETRY_DELAY_MS = 5000;
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
+
+async function readNdjsonStream(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+    if (done) {
+      buffer += decoder.decode();
+      // flush trailing incomplete buffer if any
+      const lines = buffer.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const msg = JSON.parse(line);
+        if (msg.event === "heartbeat") continue;
+        if (msg.event === "error") throw new Error(msg.detail || "pipeline error");
+        if (msg.event === "result") {
+          return Object.fromEntries(Object.entries(msg).filter(([k]) => k !== "event"));
+        }
+      }
+      throw new Error("Stream ended without a result event.");
+    }
+    let newlineIdx;
+    while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, newlineIdx).trim();
+      buffer = buffer.slice(newlineIdx + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line);
+      if (msg.event === "heartbeat") continue;
+      if (msg.event === "error") {
+        reader.cancel().catch(() => {});
+        throw new Error(msg.detail || "pipeline error");
+      }
+      if (msg.event === "result") {
+        reader.cancel().catch(() => {});
+        return Object.fromEntries(Object.entries(msg).filter(([k]) => k !== "event"));
+      }
+    }
+  }
+}
 
 async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
   const endpoint = `${apiBase}/api/agent`;
@@ -418,12 +459,32 @@ async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
     }
   }
 
+  async function run(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!response.ok || !contentType.includes("application/x-ndjson")) {
+      // Pre-stream failure (Render cold-start 502, HTTPException from handler)
+      // — let the caller's existing .ok / .json() handling fire.
+      return response;
+    }
+    const payload = await readNdjsonStream(response);
+    return {
+      ok: true,
+      status: 200,
+      headers: response.headers,
+      json: async () => payload,
+      text: async () => JSON.stringify(payload),
+    };
+  }
+
   let firstResponse;
   let firstError;
   try {
     firstResponse = await attempt();
-    if (firstResponse.ok || !RETRYABLE_STATUS.has(firstResponse.status)) {
-      return firstResponse;
+    if (firstResponse.ok && (firstResponse.headers.get("content-type") || "").includes("application/x-ndjson")) {
+      return await run(firstResponse);
+    }
+    if (!RETRYABLE_STATUS.has(firstResponse.status)) {
+      return firstResponse; // non-retryable, non-NDJSON — surface directly
     }
   } catch (error) {
     firstError = error;
@@ -433,7 +494,8 @@ async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
   await new Promise((resolve) => window.setTimeout(resolve, AGENT_RETRY_DELAY_MS));
 
   try {
-    return await attempt();
+    const retryResponse = await attempt();
+    return await run(retryResponse);
   } catch (retryError) {
     throw firstError ?? retryError;
   }
