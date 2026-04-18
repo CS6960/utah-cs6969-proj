@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Removed
+- Dead code in `frontend/src/App.jsx`: unused helpers `buildReply`, `buildPortfolioReply` (superseded by the `/api/agent` endpoint) and unused JSX components `StatChip`, `ListMetric`, `DetailBlock` (no call sites). Clears all five `no-unused-vars` ESLint errors.
+
+### Fixed
+- Chat "Failed to fetch" / CORS errors on `https://cs6960.github.io/utah-cs6969-proj/`. Root cause was an HTTP 502 from Render's edge proxy (Cloudflare's 502 page drops `Access-Control-Allow-Origin`, which the browser reports as a CORS violation). `/api/agent` and `/api/report-agent` in `backend/app.py` now run `run_critic_agent` / `run_agent` inside `asyncio.wait_for` with an 85s cap (below Render's ~100s proxy timeout) and wrap both in `try/except` that raises `HTTPException(503)` on timeout or unhandled crash, guaranteeing responses always pass through the CORS middleware. Frontend `submitMessage` / `submitPortfolioMessage` in `frontend/src/App.jsx` now use a shared `fetchAgentReply(apiBase, query)` helper with `AbortController(110s)` and one automatic retry on 502/503/504/abort/network failure, with a "Backend is waking up, retrying in a few seconds..." UX during the retry. Added a warm-up `GET /api/health` that fires when either chat panel expands, triggering cold-start wake-up before the user types.
+
 ### Added
 - `get_portfolio_weights()` helper in `backend/portfolio.py` returning per-position dollar weight as % of total NAV (equities + cash) and % of equity, sorted by weight descending. Computed from latest close × shares from `portfolio_positions` + `portfolio_cash`. Fixes Phase 3 human-eval defect where Q1/Q2 reported concentration as "5 of 8 holdings" instead of portfolio weight.
 - `build_portfolio_context()` now appends a POSITION WEIGHTS block (per-position $ and %, equity vs cash split, total NAV) plus a CONCENTRATION FRAMING directive instructing the LLM to express concentration in % of NAV, not position count. Context flows to Retriever system prompt, Strategist draft, Critic, and Strategist revision — all four stages see weights without needing a tool call.

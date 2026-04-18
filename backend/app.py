@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -109,11 +110,36 @@ def latest_stock_price(symbol: str):
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 
+# Render's edge proxy closes upstream connections after ~100s with no response bytes,
+# returning an HTML 502 page that strips CORS headers (surfacing in the browser as a
+# "CORS policy" error). Cap the pipeline wall-clock below that threshold and surface
+# failures as JSON HTTPException so responses always pass through the CORS middleware.
+AGENT_PIPELINE_TIMEOUT_SECONDS = 85
+
+
 @app.post("/api/agent")
 async def agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
-    result, dissent, draft, tools_called, execution_trace = run_critic_agent(query)
+    loop = asyncio.get_running_loop()
+    try:
+        result, dissent, draft, tools_called, execution_trace = await asyncio.wait_for(
+            loop.run_in_executor(None, run_critic_agent, query),
+            timeout=AGENT_PIPELINE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Agent pipeline exceeded {AGENT_PIPELINE_TIMEOUT_SECONDS}s. "
+                "Try a shorter question or retry in a moment."
+            ),
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Agent pipeline unavailable: {error!s}",
+        ) from error
     return {
         "result": result,
         "dissent": dissent,
@@ -127,7 +153,27 @@ async def agent_endpoint(request: Request):
 async def report_agent_endpoint(request: Request):
     data = await request.json()
     query = data.get("query", "")
-    result, tools_called, execution_trace = run_agent(query, role="financial_reports_retrieval_agent")
+    loop = asyncio.get_running_loop()
+    try:
+        result, tools_called, execution_trace = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: run_agent(query, role="financial_reports_retrieval_agent"),
+            ),
+            timeout=AGENT_PIPELINE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Report agent exceeded {AGENT_PIPELINE_TIMEOUT_SECONDS}s. Try a shorter question or retry in a moment."
+            ),
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Report agent unavailable: {error!s}",
+        ) from error
     return {"result": result, "tools_called": tools_called, "execution_trace": execution_trace}
 
 

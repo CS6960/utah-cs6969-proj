@@ -198,46 +198,6 @@ function markdownToHtml(markdown) {
   return blocks.join("");
 }
 
-function buildReply(holding, prompt) {
-  const text = prompt.toLowerCase();
-
-  if (text.includes("buy") || text.includes("add")) {
-    return `If you add ${holding.symbol}, compare current price ${money(holding.price)} against your average cost ${money(holding.avgCost)} and decide whether you are increasing exposure because position sizing still makes sense.`;
-  }
-
-  if (text.includes("sell") || text.includes("trim")) {
-    return `For ${holding.symbol}, trim logic should be driven by sizing discipline and concentration. A partial trim is often cleaner than a full exit when the main issue is position size.`;
-  }
-
-  if (text.includes("risk")) {
-    return `For ${holding.symbol}, the main question is how much portfolio risk it adds and whether it overlaps too heavily with your other positions.`;
-  }
-
-  return `For ${holding.symbol}, I would frame the next decision around valuation versus expected growth, position size, and portfolio fit.`;
-}
-
-function buildPortfolioReply(prompt, stats) {
-  const text = prompt.toLowerCase();
-
-  if (text.includes("risk") || text.includes("risky")) {
-    return "At the portfolio level, the biggest risk is concentration in mega-cap growth and AI-related names. I would check whether that overlap is intentional and whether you want more balance from healthcare, financials, or cash.";
-  }
-
-  if (text.includes("divers") || text.includes("balance")) {
-    return "The portfolio is diversified across several sectors, but the dollar exposure still leans heavily toward technology and growth. Diversification is not just ticker count, it is how differently those positions behave in the same market regime.";
-  }
-
-  if (text.includes("best") || text.includes("strongest")) {
-    return "The strongest portfolio holdings appear to be the high-conviction compounders like MSFT and AAPL, while NVDA likely contributes the most upside and the most sizing pressure.";
-  }
-
-  if (text.includes("cash") || text.includes("deploy")) {
-    return `If you are deploying fresh capital into a portfolio worth ${money(stats.value)}, I would add only where conviction improved or where the current weight is still below the intended target size.`;
-  }
-
-  return "At the overall portfolio level, I would focus on three questions: where you are overexposed, which holdings deserve additional capital, and what would break the portfolio thesis over the next year.";
-}
-
 function LoadingBar() {
   return (
     <div
@@ -380,6 +340,49 @@ function HoldingDataCell({ label, value, valueColor, align = "left" }) {
   );
 }
 
+const AGENT_FETCH_TIMEOUT_MS = 110000;
+const AGENT_RETRY_DELAY_MS = 5000;
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+
+async function fetchAgentReply(apiBase, query, { onWarming } = {}) {
+  const endpoint = `${apiBase}/api/agent`;
+  const init = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  };
+
+  async function attempt() {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), AGENT_FETCH_TIMEOUT_MS);
+    try {
+      return await fetch(endpoint, { ...init, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  let firstResponse;
+  let firstError;
+  try {
+    firstResponse = await attempt();
+    if (firstResponse.ok || !RETRYABLE_STATUS.has(firstResponse.status)) {
+      return firstResponse;
+    }
+  } catch (error) {
+    firstError = error;
+  }
+
+  if (onWarming) onWarming();
+  await new Promise((resolve) => window.setTimeout(resolve, AGENT_RETRY_DELAY_MS));
+
+  try {
+    return await attempt();
+  } catch (retryError) {
+    throw firstError ?? retryError;
+  }
+}
+
 function App() {
   const [holdings, setHoldings] = useState([]);
   const [cashBalances, setCashBalances] = useState([]);
@@ -506,6 +509,11 @@ function App() {
     };
   }, [chatApiBase]);
 
+  useEffect(() => {
+    if (!isPortfolioChatExpanded && !isHoldingChatExpanded) return;
+    fetch(`${chatApiBase}/api/health`, { method: "GET" }).catch(() => {});
+  }, [chatApiBase, isPortfolioChatExpanded, isHoldingChatExpanded]);
+
   async function openHolding(symbol) {
     setSelectedSymbol(symbol);
     setView("holding");
@@ -557,16 +565,20 @@ function App() {
     }));
 
     try {
-      const response = await fetch(`${chatApiBase}/api/agent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: prompt }),
+      const response = await fetchAgentReply(chatApiBase, prompt, {
+        onWarming: () => setChatError("Backend is waking up, retrying in a few seconds..."),
       });
 
       if (!response.ok) {
-        throw new Error(`Request failed with ${response.status}`);
+        const detail = await response.json().catch(() => null);
+        const message =
+          typeof detail?.detail === "string"
+            ? detail.detail
+            : `Request failed with ${response.status}`;
+        throw new Error(message);
       }
 
+      setChatError("");
       const data = await response.json();
       const reply =
         typeof data?.result === "string"
@@ -583,7 +595,13 @@ function App() {
         ],
       }));
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : "Unable to reach the chat service.");
+      const reason =
+        error?.name === "AbortError"
+          ? "The chat service took too long to respond. Try a shorter question or retry in a minute."
+          : error instanceof Error
+            ? error.message
+            : "Unable to reach the chat service.";
+      setChatError(reason);
     } finally {
       setIsHoldingChatLoading(false);
     }
@@ -603,16 +621,20 @@ function App() {
     setPortfolioMessages((current) => [...current, { role: "user", text: prompt }]);
 
     try {
-      const response = await fetch(`${chatApiBase}/api/agent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: prompt }),
+      const response = await fetchAgentReply(chatApiBase, prompt, {
+        onWarming: () => setChatError("Backend is waking up, retrying in a few seconds..."),
       });
 
       if (!response.ok) {
-        throw new Error(`Request failed with ${response.status}`);
+        const detail = await response.json().catch(() => null);
+        const message =
+          typeof detail?.detail === "string"
+            ? detail.detail
+            : `Request failed with ${response.status}`;
+        throw new Error(message);
       }
 
+      setChatError("");
       const data = await response.json();
       const reply =
         typeof data?.result === "string"
@@ -623,7 +645,13 @@ function App() {
 
       setPortfolioMessages((current) => [...current, { role: "advisor", text: reply }]);
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : "Unable to reach the chat service.");
+      const reason =
+        error?.name === "AbortError"
+          ? "The chat service took too long to respond. Try a shorter question or retry in a minute."
+          : error instanceof Error
+            ? error.message
+            : "Unable to reach the chat service.";
+      setChatError(reason);
     } finally {
       setIsPortfolioChatLoading(false);
     }
@@ -1665,36 +1693,6 @@ function App() {
   );
 }
 
-function StatChip({ label, value, tone }) {
-  const tones = {
-    accent: { background: theme.accentSoft, color: theme.accent },
-    gold: { background: "#fdf1dc", color: theme.gold },
-    rose: { background: "#fde8ec", color: theme.rose },
-  };
-
-  return (
-    <div
-      style={{
-        padding: "12px 16px",
-        borderRadius: 18,
-        ...tones[tone],
-      }}
-    >
-      <div style={{ fontSize: 12, opacity: 0.75 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{value}</div>
-    </div>
-  );
-}
-
-function ListMetric({ label, value, valueColor }) {
-  return (
-    <div>
-      <div style={{ color: theme.muted, fontSize: 12, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontWeight: 700, fontSize: 15, color: valueColor ?? theme.ink }}>{value}</div>
-    </div>
-  );
-}
-
 function InfoCard({ label, value }) {
   return (
     <div
@@ -1707,15 +1705,6 @@ function InfoCard({ label, value }) {
     >
       <div style={{ color: theme.muted, fontSize: 13, marginBottom: 8 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
-    </div>
-  );
-}
-
-function DetailBlock({ title, text }) {
-  return (
-    <div style={{ marginTop: 18 }}>
-      <div style={{ fontSize: 13, color: theme.muted, marginBottom: 8 }}>{title}</div>
-      <div style={{ lineHeight: 1.7, fontSize: 16 }}>{text}</div>
     </div>
   );
 }
