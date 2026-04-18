@@ -340,6 +340,62 @@ function HoldingDataCell({ label, value, valueColor, align = "left" }) {
   );
 }
 
+const PORTFOLIO_PROMPTS = [
+  "What is my biggest portfolio risk?",
+  "Am I diversified enough?",
+  "Which holdings look strongest?",
+  "Where should new cash go?",
+];
+
+const HOLDING_PROMPTS = [
+  "What is the risk?",
+  "Should I trim?",
+  "Should I add more?",
+  "How large is this position?",
+];
+
+const hasUserSent = (messages) => messages.some((m) => m.role === "user");
+const showFollowUps = (messages, error) =>
+  hasUserSent(messages) && messages.at(-1)?.role === "advisor" && !error;
+
+function SuggestionChips({ prompts, onPick, label }) {
+  return (
+    <div role="group" aria-label={label ?? "Suggested questions"}>
+      {label && (
+        <div
+          style={{
+            fontSize: 12,
+            color: theme.muted,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            marginBottom: 8,
+          }}
+        >
+          {label}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {prompts.map((prompt) => (
+          <button
+            key={prompt}
+            onClick={() => onPick(prompt)}
+            style={{
+              border: `1px solid ${theme.line}`,
+              background: "#fffdf8",
+              color: theme.ink,
+              padding: "8px 12px",
+              borderRadius: 999,
+              cursor: "pointer",
+            }}
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const AGENT_FETCH_TIMEOUT_MS = 110000;
 const AGENT_RETRY_DELAY_MS = 5000;
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
@@ -1334,40 +1390,18 @@ function App() {
 
           {isPortfolioChatExpanded && (
             <div style={{ padding: "0 18px 18px" }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  marginBottom: 14,
-                }}
-              >
-                {[
-                  "What is my biggest portfolio risk?",
-                  "Am I diversified enough?",
-                  "Which holdings look strongest?",
-                  "Where should new cash go?",
-                ].map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => setPortfolioDraft(prompt)}
-                    style={{
-                      border: `1px solid ${theme.line}`,
-                      background: "#fffdf8",
-                      color: theme.ink,
-                      padding: "8px 12px",
-                      borderRadius: 999,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
+              {!hasUserSent(portfolioMessages) && (
+                <div style={{ marginBottom: 14 }}>
+                  <SuggestionChips
+                    prompts={PORTFOLIO_PROMPTS}
+                    onPick={setPortfolioDraft}
+                  />
+                </div>
+              )}
 
               <div
                 style={{
-                  height: 260,
+                  height: hasUserSent(portfolioMessages) ? 320 : 260,
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
@@ -1393,6 +1427,15 @@ function App() {
                     <MarkdownMessage text={message.text} />
                   </div>
                 ))}
+                {showFollowUps(portfolioMessages, chatError) && (
+                  <div style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                    <SuggestionChips
+                      label="Try a follow-up"
+                      prompts={PORTFOLIO_PROMPTS}
+                      onPick={setPortfolioDraft}
+                    />
+                  </div>
+                )}
               </div>
 
               <div
@@ -1515,37 +1558,18 @@ function App() {
 
           {isHoldingChatExpanded && (
             <div style={{ padding: "0 18px 18px" }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  marginBottom: 14,
-                }}
-              >
-                {["What is the risk?", "Should I trim?", "Should I add more?", "How large is this position?"].map(
-                  (prompt) => (
-                    <button
-                      key={prompt}
-                      onClick={() => setDraft(prompt)}
-                      style={{
-                        border: `1px solid ${theme.line}`,
-                        background: "#fffdf8",
-                        color: theme.ink,
-                        padding: "8px 12px",
-                        borderRadius: 999,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {prompt}
-                    </button>
-                  ),
-                )}
-              </div>
+              {!hasUserSent(currentMessages) && (
+                <div style={{ marginBottom: 14 }}>
+                  <SuggestionChips
+                    prompts={HOLDING_PROMPTS}
+                    onPick={setDraft}
+                  />
+                </div>
+              )}
 
               <div
                 style={{
-                  height: 260,
+                  height: hasUserSent(currentMessages) ? 320 : 260,
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
@@ -1571,6 +1595,15 @@ function App() {
                     <MarkdownMessage text={message.text} />
                   </div>
                 ))}
+                {showFollowUps(currentMessages, chatError) && (
+                  <div style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                    <SuggestionChips
+                      label="Try a follow-up"
+                      prompts={HOLDING_PROMPTS}
+                      onPick={setDraft}
+                    />
+                  </div>
+                )}
               </div>
 
               <div

@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- Chat suggestion chips are now hybrid — onboarding on empty conversations, inline follow-ups under the last advisor reply after the user engages. Reclaims ~60px of permanent header space in each panel. Shared `SuggestionChips` component replaces duplicated button markup in portfolio and holding panels.
+
 ### Removed
 - Dead code in `frontend/src/App.jsx`: unused helpers `buildReply`, `buildPortfolioReply` (superseded by the `/api/agent` endpoint) and unused JSX components `StatChip`, `ListMetric`, `DetailBlock` (no call sites). Clears all five `no-unused-vars` ESLint errors.
 
