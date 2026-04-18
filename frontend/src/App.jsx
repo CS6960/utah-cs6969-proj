@@ -1401,7 +1401,7 @@ function App() {
 
               <div
                 style={{
-                  height: hasUserSent(portfolioMessages) ? 320 : 260,
+                  height: hasUserSent(portfolioMessages) ? "min(60vh, 420px)" : 260,
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
@@ -1569,7 +1569,7 @@ function App() {
 
               <div
                 style={{
-                  height: hasUserSent(currentMessages) ? 320 : 260,
+                  height: hasUserSent(currentMessages) ? "min(60vh, 420px)" : 260,
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",

@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - Chat suggestion chips are now hybrid — onboarding on empty conversations, inline follow-ups under the last advisor reply after the user engages. Reclaims ~60px of permanent header space in each panel. Shared `SuggestionChips` component replaces duplicated button markup in portfolio and holding panels.
+- Chat scroll region grows from 260px to `min(60vh, 420px)` after the first user message, giving long advisor replies (Strategist + Dissent sections) meaningfully more vertical room on typical viewports while staying within 60% of viewport height on short screens.
 
 ### Removed
 - Dead code in `frontend/src/App.jsx`: unused helpers `buildReply`, `buildPortfolioReply` (superseded by the `/api/agent` endpoint) and unused JSX components `StatChip`, `ListMetric`, `DetailBlock` (no call sites). Clears all five `no-unused-vars` ESLint errors.
