@@ -420,6 +420,41 @@ const AGENT_FETCH_TIMEOUT_MS = 250000; // slightly above backend cap (240s)
 const AGENT_RETRY_DELAY_MS = 5000;
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
+function friendlyAgentError(detail) {
+  const raw = typeof detail === "string" ? detail : "";
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("degraded function") || lower.includes("degraded_function")) {
+    return "The AI model is temporarily degraded on the provider side. Please try again in a minute.";
+  }
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("rate_limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("429")
+  ) {
+    return "The AI model is rate-limited. Please try again shortly.";
+  }
+  if (lower.includes("pipeline exceeded")) {
+    // Already user-friendly from backend/app.py; keep verbatim.
+    return raw;
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "The request took too long. Try a shorter question or retry in a minute.";
+  }
+  if (lower.includes("connection") && (lower.includes("reset") || lower.includes("refused"))) {
+    return "Lost connection to the chat service. Please try again in a moment.";
+  }
+  if (!raw) {
+    return "The chat service is temporarily unavailable. Please try again in a moment.";
+  }
+  // Dev-accessible raw detail in console; user sees the generic message.
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn("[chat] raw upstream error:", raw);
+  }
+  return "The chat service hit an unexpected error. Please try again in a moment.";
+}
+
 async function readNdjsonStream(response, { onStage } = {}) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -439,7 +474,7 @@ async function readNdjsonStream(response, { onStage } = {}) {
           continue;
         }
         if (msg.event === "heartbeat") continue;
-        if (msg.event === "error") throw new Error(msg.detail || "pipeline error");
+        if (msg.event === "error") throw new Error(friendlyAgentError(msg.detail));
         if (msg.event === "result") {
           return Object.fromEntries(Object.entries(msg).filter(([k]) => k !== "event"));
         }
@@ -459,7 +494,7 @@ async function readNdjsonStream(response, { onStage } = {}) {
       if (msg.event === "heartbeat") continue;
       if (msg.event === "error") {
         reader.cancel().catch(() => {});
-        throw new Error(msg.detail || "pipeline error");
+        throw new Error(friendlyAgentError(msg.detail));
       }
       if (msg.event === "result") {
         reader.cancel().catch(() => {});
