@@ -102,7 +102,8 @@ function renderInlineMarkdown(text) {
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/_([^_]+)_/g, "<em>$1</em>");
 }
 
 function markdownToHtml(markdown) {
@@ -159,6 +160,25 @@ function markdownToHtml(markdown) {
 
     if (inCodeBlock) {
       codeLines.push(line);
+      continue;
+    }
+
+    // Horizontal rule: a line that is only 3+ hyphens
+    if (/^-{3,}\s*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push("<hr />");
+      continue;
+    }
+
+    // ATX headings (#, ##, ###, ####, #####, ######)
+    const headingMatch = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = headingMatch[1].length;
+      const inner = renderInlineMarkdown(headingMatch[2]);
+      blocks.push(`<h${level}>${inner}</h${level}>`);
       continue;
     }
 
@@ -1532,7 +1552,7 @@ function App() {
                       border: `1px solid ${theme.line}`,
                     }}
                   >
-                    <MarkdownMessage text={message.text} />
+                    <MarkdownMessage text={message.text} role={message.role} />
                   </div>
                 ))}
                 {showFollowUps(portfolioMessages, chatError) && (
@@ -1700,7 +1720,7 @@ function App() {
                       border: `1px solid ${theme.line}`,
                     }}
                   >
-                    <MarkdownMessage text={message.text} />
+                    <MarkdownMessage text={message.text} role={message.role} />
                   </div>
                 ))}
                 {showFollowUps(currentMessages, chatError) && (
@@ -1850,13 +1870,41 @@ function InfoCard({ label, value }) {
   );
 }
 
-function MarkdownMessage({ text }) {
+function stripJudgeMarkers(text) {
+  return text
+    .split("\n")
+    .filter(
+      (line) =>
+        !line.includes("DISSENT_BLOCK_START_DO_NOT_SCORE") &&
+        !line.includes("DISSENT_BLOCK_END"),
+    )
+    .join("\n");
+}
+
+const END_OF_ANSWER_NOTE = [
+  "",
+  "---",
+  "_End of recommendation. The sections below are Strategist revision notes and a devil's-advocate Critic review, included for transparency._",
+  "---",
+  "",
+].join("\n");
+
+function insertEndOfAnswerNote(text) {
+  // Case-insensitive, multiline — matches "### Revision notes" and title-case drift.
+  const match = text.match(/^###\s+revision\s+notes\s*$/im);
+  if (!match) return text;
+  return text.slice(0, match.index) + END_OF_ANSWER_NOTE + "\n" + text.slice(match.index);
+}
+
+function MarkdownMessage({ text, role }) {
+  const processed =
+    role === "advisor" ? insertEndOfAnswerNote(stripJudgeMarkers(text)) : text;
   return (
     <div
       style={{
         fontSize: 14,
       }}
-      dangerouslySetInnerHTML={{ __html: markdownToHtml(text) }}
+      dangerouslySetInnerHTML={{ __html: markdownToHtml(processed) }}
     />
   );
 }
